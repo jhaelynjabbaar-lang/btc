@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAiConfig } from "@/lib/ai/config";
 import { aiAccessAllowed } from "@/lib/ai/guard";
-import { AiError, chatCompletion } from "@/lib/ai/openrouter";
-import { SYSTEM_PROMPT } from "@/lib/ai/prompt";
+import { AiError } from "@/lib/ai/openrouter";
 import { checkRateLimit, clientIp } from "@/lib/ai/rate-limit";
+import { runResearch } from "@/lib/ai/research";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const MAX_BODY_BYTES = 32_000;
 const MAX_MESSAGE_CHARS = 4_000;
@@ -24,6 +24,14 @@ const inputSchema = z
       )
       .min(1)
       .max(10),
+    /** "chat" = grounded Q&A; "report" = detailed sectioned report. */
+    mode: z.enum(["chat", "report"]).default("chat"),
+    /** Optional CVE/GHSA id to force into the retrieved context (used by "Explain impact & remediation"). */
+    focus: z
+      .string()
+      .trim()
+      .regex(/^(CVE-\d{4}-\d{4,}|GHSA(-[a-z0-9]{4}){3})$/i)
+      .optional(),
   })
   .strict()
   .refine((v) => v.messages.reduce((n, m) => n + m.content.length, 0) <= MAX_TOTAL_CHARS, {
@@ -33,45 +41,11 @@ const inputSchema = z
     message: "The last message must be from the user.",
   });
 
-const outputSchema = z.object({
-  summary: z.string(),
-  claims: z
-    .array(
-      z.object({
-        text: z.string(),
-        label: z.enum(["VERIFIED", "SPECULATION"]),
-        sources: z.array(z.string()).default([]),
-      }),
-    )
-    .default([]),
-  refused: z.boolean().default(false),
-  followUps: z.array(z.string()).default([]),
-});
-
-/** Pull a JSON object out of a model reply (tolerates code fences / stray prose). */
-function parseModelJson(raw: string): unknown {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  try {
-    return JSON.parse(text);
-  } catch {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(text.slice(start, end + 1));
-      } catch {
-        /* fall through */
-      }
-    }
-    return null;
-  }
-}
-
 function err(status: number, error: string, message: string, headers?: Record<string, string>) {
   return NextResponse.json({ error, message }, { status, headers: { "cache-control": "no-store", ...headers } });
 }
 
-/** POST /api/ai/chat  { messages: [{role, content}, ...] } */
+/** POST /api/ai/chat  { messages, mode?, focus? } -> grounded research answer or report */
 export async function POST(request: Request) {
   if (!aiAccessAllowed(request)) {
     return err(503, "disabled", "AI chat is disabled for this host until authentication is built.");
@@ -99,35 +73,22 @@ export async function POST(request: Request) {
   const parsed = inputSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "invalid_input", message: "Invalid request.", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) },
+      {
+        error: "invalid_input",
+        message: "Invalid request.",
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      },
       { status: 400, headers: { "cache-control": "no-store" } },
     );
   }
 
   try {
-    const result = await chatCompletion({
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...parsed.data.messages],
-      maxTokens: 6000, // Nemotron is a reasoning model: reasoning tokens count against this budget
-      temperature: 0.2,
-      timeoutMs: 55_000,
+    const result = await runResearch({
+      messages: parsed.data.messages,
+      mode: parsed.data.mode,
+      focusId: parsed.data.focus,
     });
-
-    const structured = outputSchema.safeParse(parseModelJson(result.content));
-    return NextResponse.json(
-      {
-        model: result.model,
-        structured: structured.success,
-        // If the model did not return valid JSON, fall back to its raw text rather than failing.
-        answer: structured.success
-          ? structured.data
-          : { summary: result.content, claims: [], refused: false, followUps: [] },
-        usage: result.usage,
-        finishReason: result.finishReason,
-        notice:
-          "Model output. Source citations are provided by the model, are not machine-verified, and may be wrong. Check them before relying on them.",
-      },
-      { headers: { "cache-control": "no-store" } },
-    );
+    return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     if (e instanceof AiError) return err(e.httpStatus, e.code, e.message);
     return err(500, "internal_error", "Unexpected error.");

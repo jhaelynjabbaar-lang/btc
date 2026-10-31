@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { Badge, NotConfigured, PageHeader, Panel, Stat, StageBadge } from "@/components/ui";
+import { Badge, NotConfigured, PageHeader, Panel, SeverityBadge, Stat, StageBadge } from "@/components/ui";
+import Link from "next/link";
 import { getAiStatus, type AiStatus } from "@/lib/ai/status";
+import { countBySeverity, getFeed } from "@/lib/intel/feed";
+import type { Feed } from "@/lib/intel/types";
 import { formatDifficulty, formatHashrate, getNetworkStatus, type NetworkStatus } from "@/lib/bitcoin-network";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -150,16 +153,50 @@ function AiPanel({ ai }: { ai: AiStatus }) {
         ))}
       </dl>
       <p className="mt-3 text-sm text-muted">
-        Backend and API routes exist (<span className="font-mono text-xs">/api/ai/health</span>,{" "}
-        <span className="font-mono text-xs">/api/ai/chat</span>). The chat interface is not built yet — coming in Stage 6.
+        Powers <Link href="/intelligence" className="text-electric-hi hover:text-neon">Intelligence Engine</Link>, the vulnerability
+        explainer and the <Link href="/scanner" className="text-electric-hi hover:text-neon">Code Scanner</Link>.
         {ai.configured ? " This check does not run a completion; no model call is made by this page." : ""}
       </p>
     </Panel>
   );
 }
 
+function VulnPanel({ feed }: { feed: Feed }) {
+  const counts = countBySeverity(feed.items);
+  const anyOk = feed.sources.some((s) => s.ok);
+  const failed = feed.sources.filter((s) => !s.ok);
+  return (
+    <Panel
+      title="Vulnerability statistics"
+      badge={anyOk ? (failed.length ? <Badge tone="warn">Partial</Badge> : <Badge tone="ok">Live</Badge>) : <Badge tone="danger">Unavailable</Badge>}
+    >
+      {!anyOk ? (
+        <p className="text-sm text-muted">No vulnerability source could be reached, so no counts are shown.</p>
+      ) : (
+        <>
+          <div className="mb-3 flex items-baseline gap-2">
+            <span className="font-mono text-3xl font-semibold text-ink">{feed.items.length}</span>
+            <span className="text-xs text-faint">unique Bitcoin-related items</span>
+          </div>
+          <ul className="space-y-1.5">
+            {(["critical", "high", "medium", "low", "unrated"] as const).map((s) => (
+              <li key={s} className="flex items-center justify-between">
+                <SeverityBadge severity={s} />
+                <span className="font-mono text-ink">{counts[s]}</span>
+              </li>
+            ))}
+          </ul>
+          {failed.length > 0 && <p className="mt-2 text-xs text-warn">Unavailable: {failed.map((f) => f.name).join(", ")}.</p>}
+          <Link href="/vulnerabilities" className="mt-3 text-xs text-electric-hi hover:text-neon">View feed →</Link>
+        </>
+      )}
+      <p className="mt-2 text-xs text-faint">NVD + GitHub advisories + bitcoincore.org, cached up to 1 h. Not stored.</p>
+    </Panel>
+  );
+}
+
 export default async function DashboardPage() {
-  const [net, ai] = await Promise.all([getNetworkStatus(), getAiStatus()]);
+  const [net, ai, feed] = await Promise.all([getNetworkStatus(), getAiStatus(), getFeed()]);
 
   return (
     <>
@@ -191,18 +228,14 @@ export default async function DashboardPage() {
           </ul>
         </Panel>
 
-        <Panel title="Vulnerability statistics" badge={<StageBadge stage="vulnerabilities" />}>
-          <NotConfigured stage="vulnerabilities">
-            No vulnerability feed is connected, so there are no counts to show.
-          </NotConfigured>
-        </Panel>
+        <VulnPanel feed={feed} />
 
         <Panel title="Research activity" badge={<StageBadge stage="research" />}>
           <NotConfigured stage="research">No research database exists yet, so there is no activity to show.</NotConfigured>
         </Panel>
 
         <Panel title="Recent intelligence reports" className="lg:col-span-3" badge={<StageBadge stage="reports" />}>
-          <NotConfigured stage="reports">No reports have been generated. The report generator has not been built yet.</NotConfigured>
+          <NotConfigured stage="reports">No reports have been generated. Reports can be generated on the Intelligence Engine page, but nothing is saved yet — saved reports arrive with the database (Stage 6).</NotConfigured>
         </Panel>
       </div>
     </>

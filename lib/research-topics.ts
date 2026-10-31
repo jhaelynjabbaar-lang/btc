@@ -1,0 +1,13 @@
+export type Topic = { slug: string; title: string; blurb: string; question: string };
+
+/** Defensive / educational framing for every preset. Each launches a grounded query on /intelligence. */
+export const TOPICS: Topic[] = [
+  { slug: "protocol", title: "Protocol security", blurb: "Design-level threats to the Bitcoin protocol and how they are mitigated.", question: "Give a defensive overview of protocol-level security threats to Bitcoin and the vulnerabilities disclosed in Bitcoin Core that relate to them, and how they were mitigated." },
+  { slug: "consensus", title: "Consensus", blurb: "Consensus bugs, chain-split risk and inflation bugs.", question: "Explain consensus-critical vulnerabilities in Bitcoin software (for example inflation or chain-split bugs), how past ones were found and fixed, and how node operators stay safe." },
+  { slug: "transactions", title: "Transaction security", blurb: "Malleability, standardness, fees and script pitfalls.", question: "Describe transaction-level security issues in Bitcoin (malleability, script and standardness pitfalls, fee-related risks) and the defensive practices for wallet and node developers." },
+  { slug: "double-spend", title: "Double-spend concepts", blurb: "How double spends are prevented and when risk remains.", question: "Explain, for defensive and educational purposes, how double-spend attempts work conceptually (zero-confirmation, reorgs) and how confirmations, RBF policy and node software defend against them." },
+  { slug: "mining", title: "Mining security", blurb: "Selfish mining, pool risks and block-propagation issues.", question: "Summarize mining-related security issues in Bitcoin (selfish mining theory, pool and block-propagation weaknesses, disclosed vulnerabilities affecting miners) with defensive recommendations." },
+  { slug: "network", title: "Network vulnerabilities", blurb: "P2P-layer DoS, eclipse and memory-exhaustion issues.", question: "What peer-to-peer network vulnerabilities (denial of service, memory exhaustion, eclipse-style attacks) has Bitcoin Core disclosed, and how should operators harden nodes?" },
+  { slug: "wallet", title: "Wallet security", blurb: "Key handling, signing flaws and wallet software advisories.", question: "Discuss wallet security issues in the Bitcoin ecosystem (key and seed handling, signing flaws, advisories in wallet libraries) and best practices for protecting keys." },
+  { slug: "cryptography", title: "Cryptography", blurb: "ECDSA/Schnorr, nonces, RNG and library flaws.", question: "Explain cryptographic pitfalls relevant to Bitcoin (ECDSA nonce reuse, weak randomness, signature verification bugs in libraries) and the defensive guidance and disclosed vulnerabilities around them." },
+];

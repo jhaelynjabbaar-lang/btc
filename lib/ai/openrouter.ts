@@ -79,6 +79,7 @@ export async function chatCompletion(opts: {
   maxTokens: number;
   temperature?: number;
   timeoutMs?: number;
+  reasoningEffort?: "low" | "medium" | "high";
 }): Promise<ChatResult> {
   const { model } = getAiConfig();
   const res = await call("/chat/completions", {
@@ -91,6 +92,7 @@ export async function chatCompletion(opts: {
       messages: opts.messages,
       max_tokens: opts.maxTokens,
       temperature: opts.temperature ?? 0.2,
+      ...(opts.reasoningEffort ? { reasoning: { effort: opts.reasoningEffort } } : {}),
       // Ask routed providers not to retain/train on prompts.
       provider: { data_collection: "deny" },
     }),
