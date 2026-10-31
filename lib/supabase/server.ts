@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import ws from "ws";
 import type { Database } from "./types";
 
 /**
@@ -9,6 +10,8 @@ import type { Database } from "./types";
  * name). The secret key bypasses RLS, so this module must never be imported from client code ("server-only" enforces it)
  * and the key must never use a NEXT_PUBLIC_ prefix. Neon/Drizzle remains the store for the existing features.
  */
+
+type WsTransport = NonNullable<NonNullable<Parameters<typeof createClient>[2]>["realtime"]>["transport"];
 
 export type SupabaseServer = SupabaseClient<Database>;
 
@@ -42,6 +45,8 @@ export function getSupabaseServer(): SupabaseServer {
   assertServerKey(key);
   cached = createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    // supabase-js needs a WebSocket implementation at construction time; Node < 22 has none, so always use `ws`.
+    realtime: { transport: ws as unknown as WsTransport },
     global: { headers: { "x-client-info": "btc-network-ai-server" } },
   });
   return cached;
