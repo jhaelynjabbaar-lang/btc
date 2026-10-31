@@ -119,6 +119,16 @@ export function AnswerView({
         {result.notice} Model: <span className="font-mono">{result.model}</span>
         {result.usage ? ` · ${result.usage.totalTokens.toLocaleString()} tokens` : ""}
       </p>
+      {result.persistence === "saved" && result.savedId && (
+        <p className="text-xs text-ok">
+          Saved to the research database ·{" "}
+          <a href={`/reports/${result.savedId}`} className="underline hover:text-neon">open saved report</a>
+        </p>
+      )}
+      {result.persistence === "not_configured" && (
+        <p className="text-xs text-faint">Not saved — database not configured (awaiting Neon).</p>
+      )}
+      {result.persistence === "failed" && <p className="text-xs text-warn">The answer could not be saved to the database.</p>}
     </div>
   );
 }

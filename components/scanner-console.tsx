@@ -104,7 +104,7 @@ export function ScannerConsole() {
     <div className="space-y-4">
       <div className="rounded-lg border border-line bg-panel/70 px-4 py-2.5 text-xs text-muted">
         Static analysis only: submitted code is treated as text and is <strong className="text-ink">never executed, built or installed</strong>.
-        Secret-looking values are masked before anything is sent to the model. Nothing is saved.
+        Secret-looking values are masked before anything is sent to the model. Only scan metadata and findings (never your code) are saved, and only when a database is connected.
       </div>
 
       <div className="rounded-xl border border-line bg-panel/90 p-4 sm:p-5">

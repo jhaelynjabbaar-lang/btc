@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import { VulnExplorer } from "@/components/vuln-explorer";
 import { Badge, PageHeader, Panel, SeverityBadge } from "@/components/ui";
+import { getDb } from "@/lib/db/client";
+import { saveFeedSnapshot } from "@/lib/monitor/ingest";
 import { countBySeverity, getFeed } from "@/lib/intel/feed";
 import type { Severity } from "@/lib/intel/types";
 
@@ -12,6 +15,9 @@ const ORDER: Severity[] = ["critical", "high", "medium", "low", "unrated"];
 
 export default async function Page() {
   const feed = await getFeed();
+  // Best effort, after the response: store the feed we already fetched (only sources never ingested; as baseline).
+  const db = getDb();
+  if (db) after(() => saveFeedSnapshot(db, feed).catch(() => undefined));
   const counts = countBySeverity(feed.items);
   const anyOk = feed.sources.some((s) => s.ok);
   const confirmed = feed.items.filter((i) => i.status === "confirmed").length;
@@ -48,8 +54,7 @@ export default async function Page() {
           <p className="mt-3 text-xs text-faint">
             “Confirmed” = a CVE record analyzed by NVD, or listed in an official advisory (bitcoincore.org / GitHub). “Unverified” = an
             NVD record that has not been analyzed yet. Severity is the CVSS base severity (v4.0 → v3.1 → v3.0 → v2.0); “unrated” means no
-            source supplied a score. NVD matches on the keyword “bitcoin”, so a few entries may only mention Bitcoin in passing. Not saved
-            to a database yet (Stage 6).
+            source supplied a score. NVD matches on the keyword “bitcoin”, so a few entries may only mention Bitcoin in passing. When a database is connected, the feed is also stored (see Database and Monitoring).
           </p>
         </Panel>
         <Panel title="Sources">

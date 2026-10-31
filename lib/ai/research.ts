@@ -75,10 +75,13 @@ export type ResearchResult = {
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   finishReason: string | null;
   notice: string;
+  /** Added by the API route after the answer is produced. */
+  persistence?: "saved" | "not_configured" | "failed";
+  savedId?: string | null;
 };
 
 const NOTICE =
-  "AI-generated analysis grounded on the sources listed. A claim is marked VERIFIED only when it cites a source retrieved by the server for this request; model-supplied citations that were not retrieved are shown as UNVERIFIED. Nothing is saved.";
+  "AI-generated analysis grounded on the sources listed. A claim is marked VERIFIED only when it cites a source retrieved by the server for this request; model-supplied citations that were not retrieved are shown as UNVERIFIED.";
 
 function buildReportMarkdown(
   r: z.infer<typeof reportSchema>,
@@ -102,7 +105,7 @@ function buildReportMarkdown(
   return [
     `# ${r.title.trim() || "Bitcoin security report"}`,
     "",
-    `> Generated ${at} by BTC (model: \`${model}\`). AI-generated; grounded on ${docs.length} server-retrieved source(s). Claims marked VERIFIED cite a retrieved source; everything else is unverified or speculation. Defensive/educational use only. Not saved anywhere.`,
+    `> Generated ${at} by BTC (model: \`${model}\`). AI-generated; grounded on ${docs.length} server-retrieved source(s). Claims marked VERIFIED cite a retrieved source; everything else is unverified or speculation. Defensive/educational use only. Saved to the research database only when one is configured.`,
     "",
     "## 1. Executive summary",
     g(r.executiveSummary),

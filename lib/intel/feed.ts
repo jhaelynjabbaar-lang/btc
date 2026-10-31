@@ -57,29 +57,33 @@ export function mergeItems(lists: IntelItem[][]): IntelItem[] {
 
 /**
  * Live vulnerability feed. Each upstream fetch is cached for 1 hour by the Next.js data cache.
- * A failing source is reported in `sources` and never breaks the others. Nothing is persisted.
+ * A failing source is reported in `sources` and never breaks the others. Persistence is done by callers.
  */
 export async function getFeed(): Promise<Feed> {
   const [nvd, ghsa, core] = await Promise.allSettled([fetchNvdBitcoin(), fetchGhsaBitcoin(), fetchBitcoinCoreAdvisories()]);
   const sources: SourceStatus[] = [];
   const lists: IntelItem[][] = [];
+  const raw: NonNullable<Feed["raw"]> = {};
 
   if (nvd.status === "fulfilled") {
     lists.push(nvd.value);
+    raw["NVD"] = nvd.value;
     sources.push({ name: "NVD", ok: true, count: nvd.value.length });
   } else sources.push({ name: "NVD", ok: false, count: 0, error: errText(nvd.reason) });
 
   if (ghsa.status === "fulfilled") {
     lists.push(ghsa.value.items);
+    raw["GitHub Advisories"] = ghsa.value.items;
     sources.push({ name: "GitHub Advisories", ok: true, count: ghsa.value.items.length, error: ghsa.value.error });
   } else sources.push({ name: "GitHub Advisories", ok: false, count: 0, error: errText(ghsa.reason) });
 
   if (core.status === "fulfilled") {
     lists.push(core.value);
+    raw["bitcoincore.org"] = core.value;
     sources.push({ name: "bitcoincore.org", ok: true, count: core.value.length });
   } else sources.push({ name: "bitcoincore.org", ok: false, count: 0, error: errText(core.reason) });
 
-  return { items: mergeItems(lists), sources, generatedAt: new Date().toISOString() };
+  return { items: mergeItems(lists), sources, generatedAt: new Date().toISOString(), raw };
 }
 
 export function countBySeverity(items: IntelItem[]): Record<Severity, number> {

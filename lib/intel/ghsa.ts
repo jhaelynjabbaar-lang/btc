@@ -76,13 +76,13 @@ function toItem(a: Ghsa): IntelItem | null {
  * Works without GITHUB_TOKEN but unauthenticated GitHub allows only 60 requests/hour per IP, so
  * partial results are returned (with a note) when the limit is hit.
  */
-export async function fetchGhsaBitcoin(): Promise<{ items: IntelItem[]; error?: string }> {
+export async function fetchGhsaBitcoin(revalidate = ONE_HOUR): Promise<{ items: IntelItem[]; error?: string }> {
   const jobs: Array<Promise<Ghsa[]>> = [
-    getJson<Ghsa[]>(`${API}/advisories?per_page=100&affects=${PACKAGES.join(",")}`, { headers: headers(), revalidate: ONE_HOUR }),
+    getJson<Ghsa[]>(`${API}/advisories?per_page=100&affects=${PACKAGES.join(",")}`, { headers: headers(), revalidate }),
     ...REPOS.map((r) =>
       getJson<Ghsa[]>(`${API}/repos/${r}/security-advisories?per_page=100&state=published`, {
         headers: headers(),
-        revalidate: ONE_HOUR,
+        revalidate,
       }),
     ),
   ];

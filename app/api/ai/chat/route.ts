@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAiConfig } from "@/lib/ai/config";
-import { aiAccessAllowed } from "@/lib/ai/guard";
+import { gateRoute } from "@/lib/auth/access";
+import { getDb } from "@/lib/db/client";
+import { saveResearch } from "@/lib/db/repo";
 import { AiError } from "@/lib/ai/openrouter";
 import { checkRateLimit, clientIp } from "@/lib/ai/rate-limit";
 import { runResearch } from "@/lib/ai/research";
@@ -47,9 +49,8 @@ function err(status: number, error: string, message: string, headers?: Record<st
 
 /** POST /api/ai/chat  { messages, mode?, focus? } -> grounded research answer or report */
 export async function POST(request: Request) {
-  if (!aiAccessAllowed(request)) {
-    return err(503, "disabled", "AI chat is disabled for this host until authentication is built.");
-  }
+  const gate = await gateRoute(request);
+  if (gate.response) return gate.response;
   if (!getAiConfig().configured) {
     return err(503, "not_configured", "The AI provider is not configured on this deployment.");
   }
@@ -88,7 +89,40 @@ export async function POST(request: Request) {
       mode: parsed.data.mode,
       focusId: parsed.data.focus,
     });
-    return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
+
+    // Persist when a database is configured. A storage failure never fails the answer.
+    let persistence: "saved" | "not_configured" | "failed" = "not_configured";
+    let savedId: string | null = null;
+    const db = getDb();
+    if (db) {
+      try {
+        const lastUser = [...parsed.data.messages].reverse().find((m) => m.role === "user")?.content ?? "";
+        savedId = await saveResearch(db, {
+          userLogin: gate.actor.login,
+          question: lastUser,
+          mode: result.mode,
+          title: result.report?.title ?? null,
+          summary: result.answer.summary,
+          claims: result.answer.claims,
+          sources: result.retrieval.sources,
+          markdown: result.report?.markdown ?? null,
+          model: result.model,
+          meta: {
+            followUps: result.answer.followUps,
+            refused: result.answer.refused,
+            errors: result.retrieval.errors,
+            retrievedAt: result.retrieval.retrievedAt,
+            stats: result.stats,
+            usage: result.usage,
+            structured: result.structured,
+          },
+        });
+        persistence = "saved";
+      } catch {
+        persistence = "failed";
+      }
+    }
+    return NextResponse.json({ ...result, persistence, savedId }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     if (e instanceof AiError) return err(e.httpStatus, e.code, e.message);
     return err(500, "internal_error", "Unexpected error.");

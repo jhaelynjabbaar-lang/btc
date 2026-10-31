@@ -59,10 +59,10 @@ export function StageBadge({ stage }: { stage: StageKey }) {
 }
 
 /** Honest placeholder for capabilities that are not built yet. Shows no numbers. */
-export function NotConfigured({ stage, children }: { stage: StageKey; children?: ReactNode }) {
+export function NotConfigured({ stage, note, children }: { stage?: StageKey; note?: string; children?: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-start justify-center gap-2 rounded-lg border border-dashed border-line-hi/70 bg-void/40 p-4">
-      <div className="text-sm font-medium text-ink">Not configured yet — coming in Stage {STAGES[stage]}</div>
+      <div className="text-sm font-medium text-ink">{note ?? (stage ? `Not configured yet — coming in Stage ${STAGES[stage]}` : "Not configured yet")}</div>
       {children && <p className="text-sm text-muted">{children}</p>}
     </div>
   );

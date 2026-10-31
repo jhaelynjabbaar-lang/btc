@@ -41,6 +41,8 @@ export type Feed = {
   sources: SourceStatus[];
   /** Server time this feed was assembled (underlying fetches are cached up to 1 h). */
   generatedAt: string;
+  /** Un-merged per-source records (server-side only; used for persistence). */
+  raw?: Partial<Record<SourceName, IntelItem[]>>;
 };
 
 /** A document eligible for grounding a model answer. */

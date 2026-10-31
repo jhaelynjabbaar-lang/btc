@@ -52,7 +52,7 @@ function Brand() {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, account }: { children: React.ReactNode; account?: React.ReactNode }) {
   const pathname = usePathname();
   // The drawer is "open" only for the route it was opened on, so navigating closes it
   // without a setState-in-effect.
@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <NavList pathname={pathname} />
         <div className="mt-auto border-t border-line px-5 py-4 text-xs text-faint">
-          <div className="font-mono">v0.1.0 · Stage 5</div>
+          <div className="font-mono">v0.1.0 · Stage 7</div>
           <div className="mt-1">Defensive security research only.</div>
         </div>
       </aside>
@@ -128,9 +128,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="truncate text-sm font-medium text-ink">{current?.label ?? "BTC"}</div>
             <div className="hidden truncate text-xs text-faint sm:block">{current?.description}</div>
           </div>
-          <div className="ml-auto flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-neon shadow-[0_0_8px_var(--color-neon)]" aria-hidden="true" />
-            Read-only preview
+          <div className="ml-auto flex items-center gap-3">
+            {account}
+            <div className="hidden items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-neon shadow-[0_0_8px_var(--color-neon)]" aria-hidden="true" />
+              Defensive research
+            </div>
           </div>
         </header>
         <main className="bg-grid flex-1 px-4 py-6 sm:px-6 lg:px-8">

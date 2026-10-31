@@ -5,8 +5,8 @@ import { ONE_HOUR, decodeEntities, getText, stripTags, truncate } from "./util";
 const SITE = "https://bitcoincore.org";
 
 /** Official security advisories listed on bitcoincore.org/en/security-advisories/. Cached 1 h. */
-export async function fetchBitcoinCoreAdvisories(): Promise<IntelItem[]> {
-  const { text } = await getText(`${SITE}/en/security-advisories/`, { revalidate: ONE_HOUR });
+export async function fetchBitcoinCoreAdvisories(revalidate = ONE_HOUR): Promise<IntelItem[]> {
+  const { text } = await getText(`${SITE}/en/security-advisories/`, { revalidate });
   const items: IntelItem[] = [];
   const seen = new Set<string>();
   const re = /<article>\s*<h2><a href="([^"]+)" title="([^"]*)">[\s\S]*?<\/a><\/h2>\s*<p>([\s\S]*?)<\/p>/g;
@@ -44,8 +44,8 @@ export async function fetchBitcoinCoreAdvisories(): Promise<IntelItem[]> {
 export type CorePost = { title: string; url: string; published: string | null; text: string };
 
 /** Recent posts (releases, notices) from the bitcoincore.org RSS feed. Cached 1 h. */
-export async function fetchBitcoinCorePosts(limit = 80): Promise<CorePost[]> {
-  const { text } = await getText(`${SITE}/en/rss.xml`, { revalidate: ONE_HOUR });
+export async function fetchBitcoinCorePosts(limit = 80, revalidate = ONE_HOUR): Promise<CorePost[]> {
+  const { text } = await getText(`${SITE}/en/rss.xml`, { revalidate });
   const out: CorePost[] = [];
   for (const m of text.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     const block = m[1];
