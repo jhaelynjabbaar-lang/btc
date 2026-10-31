@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BTC — Bitcoin security intelligence (defensive research)
 
-## Getting Started
+A defensive Bitcoin security research platform: live network status, AI-assisted research grounded on
+NVD / GitHub advisories / bitcoincore.org, a vulnerability feed, a static code scanner, a research database,
+and automated public-source monitoring. It contains no attack tooling and refuses theft/attack requests.
 
-First, run the development server:
+Stack: Next.js 16 (App Router), Tailwind v4, Drizzle ORM + Neon Postgres, Auth.js v5 (GitHub), NVIDIA Nemotron 3 Ultra via OpenRouter.
+
+## Run locally
 
 ```bash
+npm install
+cp .env.example .env.local   # fill what you have; everything is optional
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint && npm run typecheck && npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Database (Stage 6)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Set `DATABASE_URL` (Neon), then `npm run db:migrate`. Schema lives in `lib/db/schema.ts`; generate new migrations with
+`npm run db:generate`. Without `DATABASE_URL` the app builds and runs and database pages show "Database not configured".
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Authentication (Stage 6)
 
-## Learn More
+Set `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` (and optionally `ADMIN_GITHUB_LOGINS`). When all three are set,
+`/api/ai/*`, `/api/scan`, `/api/admin/*` and the private pages (`/intelligence`, `/scanner`, `/database`, `/reports`, `/monitoring`)
+require a signed-in GitHub user on the allowlist. When they are not set, the previous guard applies (Vercel SSO on `*.vercel.app`, localhost,
+or `AI_PUBLIC_ENABLED=true`). OAuth callback: `https://<domain>/api/auth/callback/github` (GitHub OAuth apps take one callback URL, so use
+the production domain).
 
-To learn more about Next.js, take a look at the following resources:
+## Monitoring (Stage 7)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`vercel.json` schedules `GET /api/cron/ingest` daily (Hobby plan limit). It requires `Authorization: Bearer $CRON_SECRET` (Vercel adds it
+automatically) and refuses everything if `CRON_SECRET` is unset. It ingests NVD (incremental `lastMod` window), GitHub advisories,
+bitcoincore.org advisories + RSS and bitcoin/bitcoin releases into Postgres idempotently. Each source's first successful run is a baseline;
+items first seen later are flagged new. Admins can also press "Run ingest now" on `/monitoring`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Optional: `NVD_API_KEY`, `GITHUB_TOKEN` raise upstream rate limits.

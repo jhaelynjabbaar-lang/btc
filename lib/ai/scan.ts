@@ -107,6 +107,6 @@ export async function runScan(opts: { code: string; filename?: string }): Promis
     ai,
     usage: res.usage,
     notice:
-      "Submitted code was analyzed as text only and was never executed. Secret-looking values were masked before being sent to the model. Findings are AI-assisted and may be incomplete or wrong; review them yourself. Nothing is saved.",
+      "Submitted code was analyzed as text only and was never executed. Secret-looking values were masked before being sent to the model. Findings are AI-assisted and may be incomplete or wrong; review them yourself. The code itself is never stored.",
   };
 }

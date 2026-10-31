@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
-import { Badge, NotConfigured, PageHeader, Panel, SeverityBadge, Stat, StageBadge } from "@/components/ui";
+import { Badge, NotConfigured, PageHeader, Panel, SeverityBadge, Stat } from "@/components/ui";
 import Link from "next/link";
+import { actorForPage } from "@/lib/auth/access";
+import { getDb } from "@/lib/db/client";
+import { countNewSince, getCursors, listResearch, listRuns, tableCounts } from "@/lib/db/repo";
+import { ago as agoFmt, daysAgo, fmtUtc } from "@/lib/format";
+import { SOURCE_KEYS } from "@/lib/monitor/ingest";
 import { getAiStatus, type AiStatus } from "@/lib/ai/status";
 import { countBySeverity, getFeed } from "@/lib/intel/feed";
 import type { Feed } from "@/lib/intel/types";
@@ -190,13 +195,138 @@ function VulnPanel({ feed }: { feed: Feed }) {
           <Link href="/vulnerabilities" className="mt-3 text-xs text-electric-hi hover:text-neon">View feed →</Link>
         </>
       )}
-      <p className="mt-2 text-xs text-faint">NVD + GitHub advisories + bitcoincore.org, cached up to 1 h. Not stored.</p>
+      <p className="mt-2 text-xs text-faint">NVD + GitHub advisories + bitcoincore.org, cached up to 1 h. Stored by the monitoring ingest when a database is connected.</p>
+    </Panel>
+  );
+}
+
+
+type DbView =
+  | { state: "no_db" }
+  | { state: "private"; authConfigured: boolean }
+  | { state: "error" }
+  | {
+      state: "ok";
+      counts: Awaited<ReturnType<typeof tableCounts>>;
+      cursors: Awaited<ReturnType<typeof getCursors>>;
+      lastRun: Awaited<ReturnType<typeof listRuns>>[number] | undefined;
+      fresh: Awaited<ReturnType<typeof countNewSince>>;
+      reports: Awaited<ReturnType<typeof listResearch>>["rows"];
+    };
+
+/** Dashboard panels read the database only for an allowed viewer (saved research is private). */
+async function loadDb(): Promise<DbView> {
+  const db = getDb();
+  if (!db) return { state: "no_db" };
+  const actor = await actorForPage();
+  if (!actor.allowed) return { state: "private", authConfigured: actor.mode === "auth" };
+  try {
+    const [counts, cursors, runs, fresh, reports] = await Promise.all([
+      tableCounts(db),
+      getCursors(db),
+      listRuns(db, 1),
+      countNewSince(db, daysAgo(7)),
+      listResearch(db, { limit: 5 }),
+    ]);
+    return { state: "ok", counts, cursors, lastRun: runs[0], fresh, reports: reports.rows };
+  } catch {
+    return { state: "error" };
+  }
+}
+
+function dbNote(v: Exclude<DbView, { state: "ok" }>) {
+  if (v.state === "no_db")
+    return (
+      <NotConfigured note="Database not configured — awaiting Neon">
+        No <span className="font-mono text-xs">DATABASE_URL</span> is set, so nothing is stored or shown here. Connect Neon and run the migration to turn this on.
+      </NotConfigured>
+    );
+  if (v.state === "private")
+    return (
+      <NotConfigured note={v.authConfigured ? "Sign in to view" : "Private on this host"}>
+        Stored research and monitoring data are only shown to an allowed viewer. <Link href="/signin" className="text-electric-hi hover:text-neon">Sign in</Link>
+      </NotConfigured>
+    );
+  return (
+    <NotConfigured note="Database unreachable or not migrated">
+      Run <span className="font-mono text-xs">npm run db:migrate</span> and check <span className="font-mono text-xs">DATABASE_URL</span>.
+    </NotConfigured>
+  );
+}
+
+function MonitoringPanel({ v }: { v: DbView }) {
+  return (
+    <Panel title="Security monitoring overview" badge={v.state === "ok" ? (v.lastRun ? <Badge tone="ok">Live</Badge> : <Badge tone="warn">No runs yet</Badge>) : <Badge tone="warn">Awaiting data</Badge>}>
+      {v.state !== "ok" ? (
+        dbNote(v)
+      ) : (
+        <>
+          <div className="mb-3 text-sm text-muted">
+            Last ingest: <span className="text-ink">{v.lastRun ? `${agoFmt(v.lastRun.startedAt)} (${v.lastRun.trigger})` : "never"}</span>
+          </div>
+          <ul className="space-y-1.5 text-sm text-muted">
+            {(Object.values(SOURCE_KEYS) as string[]).map((name) => {
+              const c = v.cursors.find((x) => x.source === name);
+              return (
+                <li key={name} className="flex items-center justify-between gap-2">
+                  <span className="truncate">{name}</span>
+                  {!c ? <Badge>never run</Badge> : c.lastStatus === "ok" ? <Badge tone="ok">ok · {agoFmt(c.lastRunAt)}</Badge> : <Badge tone="warn">error</Badge>}
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-3 text-xs text-faint">
+            New in the last 7 days: <span className="font-mono text-ink">{v.fresh.findings}</span> finding(s), <span className="font-mono text-ink">{v.fresh.releases}</span> release/post(s).{" "}
+            <Link href="/monitoring" className="text-electric-hi hover:text-neon">Details →</Link>
+          </p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function ResearchPanel({ v }: { v: DbView }) {
+  return (
+    <Panel title="Research activity" badge={v.state === "ok" ? <Badge tone="ok">Live</Badge> : <Badge tone="warn">Awaiting data</Badge>}>
+      {v.state !== "ok" ? (
+        dbNote(v)
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Saved research" value={v.counts.researchReports} />
+          <Stat label="Scans run" value={v.counts.scanRuns} />
+          <Stat label="Findings stored" value={v.counts.findings} />
+          <Stat label="Releases / posts" value={v.counts.releases} />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function ReportsPanel({ v }: { v: DbView }) {
+  return (
+    <Panel title="Recent intelligence reports" className="lg:col-span-3" badge={v.state === "ok" ? <Badge tone="ok">Live</Badge> : <Badge tone="warn">Awaiting data</Badge>}>
+      {v.state !== "ok" ? (
+        dbNote(v)
+      ) : v.reports.length === 0 ? (
+        <p className="text-sm text-muted">
+          Nothing saved yet. Ask a question or generate a report on the <Link href="/intelligence" className="text-electric-hi hover:text-neon">Intelligence Engine</Link> and it is stored here.
+        </p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {v.reports.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <Link href={`/reports/${r.id}`} className="min-w-0 flex-1 truncate text-ink/90 hover:text-neon">{r.title || r.question}</Link>
+              <span className="flex items-center gap-2 text-xs text-faint"><Badge tone={r.mode === "report" ? "info" : "muted"}>{r.mode}</Badge>{fmtUtc(r.createdAt)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </Panel>
   );
 }
 
 export default async function DashboardPage() {
-  const [net, ai, feed] = await Promise.all([getNetworkStatus(), getAiStatus(), getFeed()]);
+  const [net, ai, feed, dbv] = await Promise.all([getNetworkStatus(), getAiStatus(), getFeed(), loadDb()]);
 
   return (
     <>
@@ -211,32 +341,13 @@ export default async function DashboardPage() {
 
         <AiPanel ai={ai} />
 
-        <Panel title="Security monitoring overview" badge={<StageBadge stage="monitoring" />}>
-          <NotConfigured stage="monitoring">No monitors are running. Planned sources:</NotConfigured>
-          <ul className="mt-3 space-y-1.5 text-sm text-muted">
-            {[
-              "bitcoin/bitcoin GitHub releases",
-              "bitcoincore.org security advisories",
-              "GitHub Security Advisories",
-              "NVD CVE API 2.0",
-            ].map((s) => (
-              <li key={s} className="flex items-center justify-between gap-2">
-                <span>{s}</span>
-                <Badge>Planned</Badge>
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <MonitoringPanel v={dbv} />
 
         <VulnPanel feed={feed} />
 
-        <Panel title="Research activity" badge={<StageBadge stage="research" />}>
-          <NotConfigured stage="research">No research database exists yet, so there is no activity to show.</NotConfigured>
-        </Panel>
+        <ResearchPanel v={dbv} />
 
-        <Panel title="Recent intelligence reports" className="lg:col-span-3" badge={<StageBadge stage="reports" />}>
-          <NotConfigured stage="reports">No reports have been generated. Reports can be generated on the Intelligence Engine page, but nothing is saved yet — saved reports arrive with the database (Stage 6).</NotConfigured>
-        </Panel>
+        <ReportsPanel v={dbv} />
       </div>
     </>
   );

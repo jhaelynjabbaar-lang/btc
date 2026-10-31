@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { aiAccessAllowed } from "@/lib/ai/guard";
+import { gateRoute } from "@/lib/auth/access";
 import { checkRateLimit, clientIp } from "@/lib/ai/rate-limit";
 import { getAiStatus } from "@/lib/ai/status";
 
@@ -12,9 +12,8 @@ export const maxDuration = 30;
  * Never returns the API key, credit balance or provider error bodies.
  */
 export async function GET(request: Request) {
-  if (!aiAccessAllowed(request)) {
-    return NextResponse.json({ error: "disabled", message: "AI routes are disabled for this host." }, { status: 503 });
-  }
+  const gate = await gateRoute(request);
+  if (gate.response) return gate.response;
   const probe = new URL(request.url).searchParams.get("probe") === "1";
   if (probe) {
     const rl = checkRateLimit(`health:${clientIp(request)}`);

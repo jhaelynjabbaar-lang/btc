@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAiConfig } from "@/lib/ai/config";
-import { aiAccessAllowed } from "@/lib/ai/guard";
+import { gateRoute } from "@/lib/auth/access";
+import { getDb } from "@/lib/db/client";
+import { saveScanRun } from "@/lib/db/repo";
 import { AiError } from "@/lib/ai/openrouter";
 import { checkRateLimit, clientIp } from "@/lib/ai/rate-limit";
 import { runScan } from "@/lib/ai/scan";
@@ -33,9 +35,8 @@ function err(status: number, error: string, message: string, headers?: Record<st
 
 /** POST /api/scan { code, filename?, authorized: true } — static, text-only analysis. Never executes code. */
 export async function POST(request: Request) {
-  if (!aiAccessAllowed(request)) {
-    return err(503, "disabled", "The code scanner is disabled for this host until authentication is built.");
-  }
+  const gate = await gateRoute(request);
+  if (gate.response) return gate.response;
   if (!getAiConfig().configured) {
     return err(503, "not_configured", "The AI provider is not configured on this deployment.");
   }
@@ -69,7 +70,26 @@ export async function POST(request: Request) {
 
   try {
     const result = await runScan({ code: parsed.data.code, filename: parsed.data.filename });
-    return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
+    // Persist metadata + findings only (never the submitted code) when a database is configured.
+    let persistence: "saved" | "not_configured" | "failed" = "not_configured";
+    const db = getDb();
+    if (db) {
+      try {
+        await saveScanRun(db, {
+          userLogin: gate.actor.login,
+          filename: parsed.data.filename ?? null,
+          totalLines: result.totalLines,
+          prescanCount: result.prescan.length,
+          aiFindingCount: result.ai.findings.length,
+          findings: result.ai.findings,
+          model: result.model,
+        });
+        persistence = "saved";
+      } catch {
+        persistence = "failed";
+      }
+    }
+    return NextResponse.json({ ...result, persistence }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     if (e instanceof AiError) return err(e.httpStatus, e.code, e.message);
     return err(500, "internal_error", "Unexpected error.");

@@ -16,8 +16,7 @@ export default function Page() {
         subtitle="Topic presets for defensive Bitcoin security research. Each one launches a query on the Intelligence Engine, grounded on live NVD, GitHub advisory and bitcoincore.org data."
       />
       <div className="mb-4 rounded-lg border border-line bg-panel/70 px-4 py-2.5 text-xs text-muted">
-        Educational and defensive framing only. Research notes and findings are not saved yet — persistence arrives with the
-        database in Stage 6.
+        Educational and defensive framing only. Answers and reports are saved to the research database when one is connected (see Database and Reports); without a database nothing is stored.
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {TOPICS.map((t) => (

@@ -78,10 +78,10 @@ export function normalizeNvd(c: NvdCve): IntelItem | null {
 }
 
 /** All NVD CVEs matching keyword "bitcoin" (a superset of the Bitcoin Core CPE match). Cached 1 h. */
-export async function fetchNvdBitcoin(): Promise<IntelItem[]> {
+export async function fetchNvdBitcoin(revalidate = ONE_HOUR): Promise<IntelItem[]> {
   const data = await getJson<NvdResponse>(`${BASE}?keywordSearch=bitcoin&resultsPerPage=500`, {
     headers: headers(),
-    revalidate: ONE_HOUR,
+    revalidate,
   });
   return data.vulnerabilities.map((v) => normalizeNvd(v.cve)).filter((x): x is IntelItem => x !== null);
 }
@@ -92,4 +92,17 @@ export async function fetchNvdCve(cveId: string): Promise<IntelItem | null> {
   const data = await getJson<NvdResponse>(`${BASE}?cveId=${cveId}`, { headers: headers(), revalidate: 24 * ONE_HOUR });
   const c = data.vulnerabilities[0]?.cve;
   return c ? normalizeNvd(c) : null;
+}
+
+/** NVD timestamps are "YYYY-MM-DDTHH:mm:ss.SSS" (UTC, no zone suffix). */
+export const nvdTime = (d: Date) => d.toISOString().replace("Z", "");
+
+/**
+ * Incremental fetch: bitcoin-keyword CVEs modified in [since, until]. NVD limits a window to 120 days,
+ * so callers fall back to a full fetch when the cursor is older than that. Never cached.
+ */
+export async function fetchNvdModified(since: Date, until: Date): Promise<IntelItem[]> {
+  const q = `keywordSearch=bitcoin&lastModStartDate=${encodeURIComponent(nvdTime(since))}&lastModEndDate=${encodeURIComponent(nvdTime(until))}&resultsPerPage=500`;
+  const data = await getJson<NvdResponse>(`${BASE}?${q}`, { headers: headers(), revalidate: 0 });
+  return data.vulnerabilities.map((v) => normalizeNvd(v.cve)).filter((x): x is IntelItem => x !== null);
 }
