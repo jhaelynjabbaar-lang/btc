@@ -14,7 +14,7 @@ export default function Page() {
         stage="engine"
         title="The Intelligence Engine"
         planned={[
-          "Server-side calls to NVIDIA Nemotron 3 Ultra through the NVIDIA API (OpenAI-compatible), with the key kept in a server-only environment variable.",
+          "Server-side calls to NVIDIA Nemotron 3 Ultra via OpenRouter (OpenAI-compatible), with the key kept in a server-only environment variable.",
           "Structured summaries and triage of advisories, releases and research notes.",
           "Per-user rate limits and caching so AI usage stays bounded.",
         ]}
