@@ -38,6 +38,13 @@ const paths: Record<NavItem["icon"], React.ReactNode> = {
       <path d="M3 12h4l2.5-7 5 14L17 12h4" />
     </>
   ),
+  workers: (
+    <>
+      <rect x="3" y="4" width="18" height="7" rx="1.5" />
+      <rect x="3" y="13" width="18" height="7" rx="1.5" />
+      <path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6" />
+    </>
+  ),
   database: (
     <>
       <ellipse cx="12" cy="5.5" rx="8" ry="3" />

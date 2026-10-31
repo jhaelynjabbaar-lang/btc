@@ -1,0 +1,21 @@
+{
+  "name": "btc-network-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker: signed agent enrollment, telemetry ingest and command poll for BTC Network AI.",
+  "scripts": {
+    "types": "wrangler types --env-file .dev.vars.example",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "e2e": "tsx scripts/e2e.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^3",
+    "wrangler": "4.86.0"
+  }
+}
