@@ -20,6 +20,14 @@ npm run lint && npm run typecheck && npm run build
 Set `DATABASE_URL` (Neon), then `npm run db:migrate`. Schema lives in `lib/db/schema.ts`; generate new migrations with
 `npm run db:generate`. Without `DATABASE_URL` the app builds and runs and database pages show "Database not configured".
 
+## Supabase — BTC Network AI (Phase 2)
+
+Mining/worker/ledger data lives in a separate Supabase project (`btc-network-ai`, us-east-1); Neon/Drizzle keeps serving the existing
+features. SQL migrations are in `supabase/migrations/` (applied through the Supabase MCP). Every table has RLS enabled with no
+anon/authenticated policies and the client roles have no table grants, so only the server can touch the data, via
+`lib/supabase/server.ts` (`import "server-only"`, `SUPABASE_URL` + `SUPABASE_SECRET_KEY`, never `NEXT_PUBLIC_`).
+Types: `lib/supabase/types.ts` (generated). `GET /api/mining/health` (admin-gated) reports reachability and per-table row counts.
+
 ## Authentication (Stage 6)
 
 Set `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` (and optionally `ADMIN_GITHUB_LOGINS`). When all three are set,
