@@ -1,23 +1,29 @@
 import type { Metadata } from "next";
-import { ComingSoon, PageHeader } from "@/components/ui";
+import { ResearchConsole } from "@/components/research-console";
+import { PageHeader } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Intelligence Engine" };
 
-export default function Page() {
+type SP = Promise<{ [k: string]: string | string[] | undefined }>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+export default async function Page({ searchParams }: { searchParams: SP }) {
+  const sp = await searchParams;
+  const q = one(sp.q)?.slice(0, 1000);
+  const mode: "chat" | "report" = one(sp.mode) === "report" ? "report" : "chat";
+  const auto = one(sp.auto) === "1" && q ? { q, mode } : null;
   return (
     <>
       <PageHeader
+        eyebrow="NVIDIA Nemotron 3 Ultra · grounded"
         title="Intelligence Engine"
-        subtitle="AI-assisted analysis of Bitcoin security data using NVIDIA Nemotron 3 Ultra."
+        subtitle="Ask Bitcoin security questions. Each answer is grounded on sources retrieved live from NVD, GitHub advisories and bitcoincore.org; claims without a retrieved source can't be marked VERIFIED."
       />
-      <ComingSoon
-        stage="engine"
-        title="The Intelligence Engine"
-        planned={[
-          "Server-side calls to NVIDIA Nemotron 3 Ultra via OpenRouter (OpenAI-compatible), with the key kept in a server-only environment variable.",
-          "Structured summaries and triage of advisories, releases and research notes.",
-          "Per-user rate limits and caching so AI usage stays bounded.",
-        ]}
+      {/* key forces a fresh console when a different preset is launched */}
+      <ResearchConsole
+        key={auto ? `${auto.mode}:${auto.q}` : "blank"}
+        initialQuestion={auto?.q}
+        initialMode={auto?.mode}
       />
     </>
   );

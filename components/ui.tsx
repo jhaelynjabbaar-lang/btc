@@ -110,3 +110,26 @@ export function ComingSoon({
     </div>
   );
 }
+
+const sevTone: Record<string, string> = {
+  critical: "border-danger/50 bg-danger/15 text-danger",
+  high: "border-high/40 bg-high/10 text-high",
+  medium: "border-warn/40 bg-warn/10 text-warn",
+  low: "border-electric/40 bg-electric/10 text-electric-hi",
+  info: "border-line-hi bg-panel-hi text-muted",
+  unrated: "border-line bg-panel-hi text-faint",
+};
+
+export function SeverityBadge({ severity, score }: { severity: string; score?: number | null }) {
+  return (
+    <span
+      className={
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide " +
+        (sevTone[severity] ?? sevTone.unrated)
+      }
+    >
+      {severity}
+      {typeof score === "number" && <span className="font-mono font-normal opacity-80">{score.toFixed(1)}</span>}
+    </span>
+  );
+}

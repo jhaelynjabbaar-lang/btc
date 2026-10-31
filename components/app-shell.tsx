@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <NavList pathname={pathname} />
         <div className="mt-auto border-t border-line px-5 py-4 text-xs text-faint">
-          <div className="font-mono">v0.1.0 · Stage 2</div>
+          <div className="font-mono">v0.1.0 · Stage 5</div>
           <div className="mt-1">Defensive security research only.</div>
         </div>
       </aside>
