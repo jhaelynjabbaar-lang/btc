@@ -1,0 +1,13 @@
+[package]
+name = "sri-mock-pool"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "TEST DOUBLE: a minimal Stratum V2 mining pool for localhost integration tests of the BTC Network AI agent. Not a real pool."
+publish = false
+
+[dependencies]
+stratum-apps = { path = "../stratum-apps" }
+tokio = { version = "1.44.1", features = ["full"] }
+tokio-util = { version = "0.7.10" }
+bs58 = { version = "0.4.0", default-features = false, features = ["check", "alloc", "std"] }

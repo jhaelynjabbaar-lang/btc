@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 
 /// Bump when the consent text materially changes; everyone must consent again.
-pub const CONSENT_VERSION: u32 = 1;
+pub const CONSENT_VERSION: u32 = 2;
 
 pub const CONSENT_TEXT: &str = "\
 BTC NETWORK AI AGENT - WHAT THIS PROGRAM DOES
@@ -19,6 +19,13 @@ If you continue, then whenever you run `btc-agent run`:
     The agent does not contain a miner.
   * That miner uses your CPU/GPU, electricity and cooling, and makes the machine warmer and louder.
   * It connects the miner to the mining pool in your config, with the pool user/password you configured.
+    In Stratum V2 mode (`mode = \"sv2\"`) it ALSO starts a second open-source program as a child process, the SRI
+    translator proxy (`translator_sv2`). It listens on this machine only (127.0.0.1); your miner connects to it and
+    it connects to the pool over Stratum V2. The agent writes the proxy's config file (no secrets) and stops both
+    programs together.
+  * If you enable `[pool_stats]`, it also asks the pool's own account API for stats about your workers, using an
+    API token you store in a file only you can read. Those numbers are shown locally and are never sent to the
+    BTC Network AI server.
   * It sends one-minute telemetry to the BTC Network AI server: hashrate, accepted/rejected share counts as
     reported by the miner/pool, uptime, agent version. Hardware info (OS, CPU model, core count, memory, GPU name
     when detectable) is sent once, at enrollment. Nothing else is collected: no files, no browsing, no keystrokes.
@@ -27,7 +34,8 @@ If you continue, then whenever you run `btc-agent run`:
 
 How you stay in control:
   * It is NEVER hidden. It runs in your terminal, prints a banner and periodic status lines, and keeps a
-    plain-text log you can read. `btc-agent status` shows what it is doing. Ctrl-C stops the miner and the agent.
+    plain-text log you can read. `btc-agent status` shows what it is doing. Ctrl-C stops the miner (and the translator
+    proxy, if used) and the agent.
   * `btc-agent consent --revoke` withdraws consent (a running agent stops itself); `btc-agent uninstall` deletes
     the key and all local files.
 

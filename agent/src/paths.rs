@@ -40,6 +40,10 @@ impl Paths {
     pub fn log(&self) -> PathBuf {
         self.dir.join("agent.log")
     }
+    /// The translator proxy's generated config (rewritten on every start; contains no secrets).
+    pub fn tproxy_config(&self) -> PathBuf {
+        self.dir.join("tproxy.toml")
+    }
 
     /// Every file the agent creates (used by `uninstall`).
     pub fn all_files(&self) -> Vec<PathBuf> {
@@ -51,6 +55,8 @@ impl Paths {
             self.status(),
             self.log(),
             self.dir.join("agent.log.1"),
+            self.tproxy_config(),
+            self.dir.join("tproxy.toml.tmp"),
         ]
     }
 

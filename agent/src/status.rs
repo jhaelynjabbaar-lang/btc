@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct StatusFile {
     pub pid: u32,
     pub running: bool,
@@ -22,6 +23,15 @@ pub struct StatusFile {
     pub last_telemetry_ok_unix: Option<u64>,
     pub last_command_poll_ok_unix: Option<u64>,
     pub agent_version: String,
+    /// `"sv1"` (miner talks to the pool directly) or `"sv2"` (miner -> local translator proxy -> pool over Stratum V2).
+    pub mode: String,
+    /// Stratum V2 mode only: the second child process.
+    pub translator_running: bool,
+    pub translator_pid: Option<u32>,
+    /// Loopback port the translator listens on (sv2 mode).
+    pub translator_port: Option<u16>,
+    /// Latest pool-reported stats (optional `[pool_stats]`). Local only: never sent to the server. `null` when disabled.
+    pub pool_stats: Option<crate::poolstats::PoolStatsSnapshot>,
 }
 
 pub const FRESH_SECS: u64 = 30;

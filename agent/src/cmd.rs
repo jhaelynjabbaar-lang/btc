@@ -2,7 +2,7 @@
 
 use crate::api::{self, ErrorKind, HttpApi, validate_server_url};
 use crate::commands::AgentState;
-use crate::config::{Config, TEMPLATE};
+use crate::config::{Config, PoolMode, TEMPLATE};
 use crate::consent::{self, ConsentStatus};
 use crate::hardware;
 use crate::identity::Identity;
@@ -163,16 +163,25 @@ pub fn status_cmd(paths: &Paths, out: &mut dyn Write) -> Result<()> {
         Ok(c) => {
             let problems = c.problems(cpus);
             if problems.is_empty() {
-                let host = c
-                    .pool
-                    .url
-                    .as_deref()
-                    .and_then(|u| url::Url::parse(u).ok())
-                    .and_then(|u| u.host_str().map(str::to_string))
-                    .unwrap_or_default();
+                let (host, via) = match c.effective_mode() {
+                    PoolMode::Sv1 => (
+                        c.pool
+                            .url
+                            .as_deref()
+                            .and_then(|u| url::Url::parse(u).ok())
+                            .and_then(|u| u.host_str().map(str::to_string))
+                            .unwrap_or_default(),
+                        "Stratum V1, direct".to_string(),
+                    ),
+                    PoolMode::Sv2 => (
+                        c.stratum_v2.upstream_address.clone().unwrap_or_default(),
+                        format!("Stratum V2 via local translator on 127.0.0.1:{}", c.stratum_v2.downstream_port),
+                    ),
+                };
                 writeln!(
                     out,
-                    "  config    : valid (pool {host}, miner {}, {} thread(s))",
+                    "  config    : valid (mode {}, pool {host} [{via}], miner {}, {} thread(s))",
+                    c.effective_mode().label(),
                     c.miner.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
                     c.effective_threads(cpus)
                 )?;
@@ -201,14 +210,40 @@ pub fn status_cmd(paths: &Paths, out: &mut dyn Write) -> Result<()> {
                     None => "not running".into(),
                 }
             )?;
+            if s.mode == "sv2" {
+                writeln!(
+                    out,
+                    "  translator: {} (listens on 127.0.0.1:{})",
+                    match s.translator_pid {
+                        Some(p) => format!("running (pid {p})"),
+                        None => "not running".into(),
+                    },
+                    s.translator_port.map_or("?".to_string(), |p| p.to_string())
+                )?;
+            }
             let n = |v: Option<u64>| v.map_or("unknown".to_string(), |x| x.to_string());
             writeln!(
                 out,
-                "  mining    : hashrate {}, accepted {}, rejected {} (as reported by the miner)",
+                "  mining    : hashrate {}, accepted {}, rejected {} ({})",
                 format_hashrate(s.hashrate_hs),
                 n(s.accepted_shares),
-                n(s.rejected_shares)
+                n(s.rejected_shares),
+                if s.mode == "sv2" { "shares counted only when the pool confirms them" } else { "as reported by the miner" }
             )?;
+            if let Some(p) = &s.pool_stats {
+                let n = |v: Option<u64>| v.map_or("unknown".to_string(), |x| x.to_string());
+                writeln!(
+                    out,
+                    "  pool says : {} worker(s) matched, shares last 5m/60m/24h {}/{}/{}, last share {} ({}s ago when fetched; {})",
+                    p.workers_matched,
+                    n(p.shares_5m),
+                    n(p.shares_60m),
+                    n(p.shares_24h),
+                    p.last_share_unix.map_or("unknown".to_string(), |t| format!("{}s ago", now.saturating_sub(t))),
+                    now.saturating_sub(p.fetched_at_unix),
+                    p.source
+                )?;
+            }
             writeln!(
                 out,
                 "  telemetry : {} row(s) buffered; last upload {}",
@@ -254,6 +289,7 @@ pub fn run_cmd(paths: &Paths, start_paused: bool) -> Result<()> {
         ctrlc::set_handler(move || stop.store(true, Ordering::SeqCst)).context("installing the Ctrl-C handler")?;
     }
     let api = HttpApi::new(&worker.server_url, &worker.worker_id, Arc::new(identity));
+    let pool_stats = crate::poolstats::BraiinsClient::from_config(&cfg).map_err(|e| anyhow::anyhow!("pool_stats: {e}"))?;
     let mut sup = Supervisor::new(Params {
         paths: paths.clone(),
         timing: Timing::from_config(&cfg),
@@ -265,6 +301,9 @@ pub fn run_cmd(paths: &Paths, start_paused: bool) -> Result<()> {
         start_state: if start_paused { AgentState::Paused } else { AgentState::Mining },
         logical_cpus: cpus,
     })?;
+    if let Some(c) = pool_stats {
+        sup = sup.with_pool_stats(Box::new(c));
+    }
     sup.run(stop)
 }
 

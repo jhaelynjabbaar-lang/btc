@@ -15,12 +15,14 @@ pub mod logger;
 pub mod miner;
 pub mod parse;
 pub mod paths;
+pub mod poolstats;
 pub mod protocol;
 pub mod safety;
 pub mod status;
 pub mod supervisor;
 pub mod telemetry;
 pub mod timeutil;
+pub mod tproxy;
 
 /// Version string reported to the server (`software_version`, max 32 chars).
 pub const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
