@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Badge, NotConfigured, PageHeader, Panel, Stat, StageBadge } from "@/components/ui";
+import { getAiStatus, type AiStatus } from "@/lib/ai/status";
 import { formatDifficulty, formatHashrate, getNetworkStatus, type NetworkStatus } from "@/lib/bitcoin-network";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -117,22 +118,48 @@ function NetworkPanel({ net }: { net: NetworkStatus }) {
   );
 }
 
-function EngineProviderRow({ name, envVar, configured }: { name: string; envVar: string; configured: boolean }) {
+function AiPanel({ ai }: { ai: AiStatus }) {
+  const badge = !ai.configured ? (
+    <Badge tone="muted">Not configured</Badge>
+  ) : ai.working ? (
+    <Badge tone="ok">Working</Badge>
+  ) : (
+    <Badge tone="danger">Not working</Badge>
+  );
+  const rows: Array<[string, React.ReactNode]> = [
+    ["Provider", ai.provider],
+    ["Model", <span key="m" className="break-all font-mono text-xs">{ai.model}</span>],
+    ["API key", ai.configured ? "Present (server-side)" : "Not set (OPENROUTER_API_KEY)"],
+    [
+      "Provider check",
+      !ai.configured
+        ? "Not run"
+        : ai.working
+          ? "Key accepted, model listed"
+          : `Failed (${ai.error ?? "unknown"})`,
+    ],
+  ];
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border border-line bg-void/50 px-3 py-2.5">
-      <div className="min-w-0">
-        <div className="text-sm font-medium text-ink">{name}</div>
-        <div className="truncate font-mono text-xs text-faint">{envVar}</div>
-      </div>
-      {configured ? <Badge tone="info">Key present · unverified</Badge> : <Badge tone="muted">Not configured</Badge>}
-    </li>
+    <Panel title="AI engine status" badge={badge}>
+      <dl className="space-y-2 text-sm">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex items-start justify-between gap-4 border-b border-line/60 pb-2 last:border-0">
+            <dt className="text-muted">{k}</dt>
+            <dd className="text-right text-ink">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-sm text-muted">
+        Backend and API routes exist (<span className="font-mono text-xs">/api/ai/health</span>,{" "}
+        <span className="font-mono text-xs">/api/ai/chat</span>). The chat interface is not built yet — coming in Stage 6.
+        {ai.configured ? " This check does not run a completion; no model call is made by this page." : ""}
+      </p>
+    </Panel>
   );
 }
 
 export default async function DashboardPage() {
-  const net = await getNetworkStatus();
-  // Only a boolean is derived; the key value is never read into the UI.
-  const nvidiaConfigured = Boolean(process.env.NVIDIA_API_KEY);
+  const [net, ai] = await Promise.all([getNetworkStatus(), getAiStatus()]);
 
   return (
     <>
@@ -145,15 +172,7 @@ export default async function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <NetworkPanel net={net} />
 
-        <Panel title="AI engine status" badge={<StageBadge stage="engine" />}>
-          <ul className="space-y-2">
-            <EngineProviderRow name="NVIDIA Nemotron 3 Ultra" envVar="NVIDIA_API_KEY" configured={nvidiaConfigured} />
-          </ul>
-          <p className="mt-3 text-sm text-muted">
-            The AI provider layer is not built yet — coming in Stage 6. Keys are read server-side only; a key being
-            present here has not been tested.
-          </p>
-        </Panel>
+        <AiPanel ai={ai} />
 
         <Panel title="Security monitoring overview" badge={<StageBadge stage="monitoring" />}>
           <NotConfigured stage="monitoring">No monitors are running. Planned sources:</NotConfigured>
