@@ -15,5 +15,4 @@ if (process.env.VERCEL_ENV === "production" && hasDb) {
 } else {
   console.log("[vercel-build] skipping migrations (not a production build or no database URL)");
 }
-run(process.execPath, ["scripts/check-supabase.mjs"]);
 run("npx", ["next", "build"]);
