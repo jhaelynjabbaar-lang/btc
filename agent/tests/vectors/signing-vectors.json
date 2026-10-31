@@ -1,0 +1,58 @@
+{
+  "protocol": "BTCNAI1",
+  "generated_by": "cloudflare/ingest-worker/src/protocol.ts",
+  "vectors": [
+    {
+      "name": "get-commands-empty-body",
+      "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "public_key": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "method": "GET",
+      "path": "/v1/commands",
+      "timestamp": "1793476800",
+      "nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "body": "",
+      "body_sha256_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical_message": "BTCNAI1\nGET\n/v1/commands\n1793476800\nAAECAwQFBgcICQoLDA0ODw\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "iVd79PergrZx4W5n6r7wdQGCznPuqr10KX8y_P2xmMBYgYiOmZUejjvJn-Xi4Dni8YlaIlkonPG_dz_wxUSxCg"
+    },
+    {
+      "name": "post-telemetry",
+      "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "public_key": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+      "method": "POST",
+      "path": "/v1/telemetry",
+      "timestamp": "1793476860",
+      "nonce": "dGVzdC1ub25jZS0wMDAwMDAx",
+      "body": "{\"rows\":[{\"bucket_start\":\"2026-10-31T20:00:00Z\",\"avg_hashrate_hs\":1234.5,\"accepted\":3,\"rejected\":1}],\"uptime_s\":60,\"software_version\":\"0.1.0\"}",
+      "body_sha256_hex": "632b027c615e6e1cf2de60a20643c3ce8c85b8a874b032817a276f9eab573f55",
+      "canonical_message": "BTCNAI1\nPOST\n/v1/telemetry\n1793476860\ndGVzdC1ub25jZS0wMDAwMDAx\n632b027c615e6e1cf2de60a20643c3ce8c85b8a874b032817a276f9eab573f55",
+      "signature": "1WYn5Nl07MZo1HNK6e83u8252aDuUN7azoXY3Q5Qm9hK74ASzh_w2NzkACCKuTFZ8wro6Dkiuo1PzBtThdp7AA"
+    },
+    {
+      "name": "post-commands-ack",
+      "seed_hex": "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+      "public_key": "Lk6D_bLYj4jF8D5mPDnqP5x1NjErYqKwmpVxLczxGkA",
+      "method": "POST",
+      "path": "/v1/commands/ack",
+      "timestamp": "1793476900",
+      "nonce": "ack_nonce-0123456789",
+      "body": "{\"ids\":[\"11111111-2222-4333-8444-555555555555\"]}",
+      "body_sha256_hex": "d9b9dbb013234dc4769cf3d8af0c2887c28a665ecb82e9265a162c2bad51d7b5",
+      "canonical_message": "BTCNAI1\nPOST\n/v1/commands/ack\n1793476900\nack_nonce-0123456789\nd9b9dbb013234dc4769cf3d8af0c2887c28a665ecb82e9265a162c2bad51d7b5",
+      "signature": "mNmEorWCpAdyiTtQfQeikMjNVNYOG-Hyji7Zc3Gg2R-NFcm7Vm3wtGpAljsWHnqApotiXxlm9aXVGDgAfj8NBQ"
+    },
+    {
+      "name": "post-enroll-proof-of-possession",
+      "seed_hex": "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+      "public_key": "Lk6D_bLYj4jF8D5mPDnqP5x1NjErYqKwmpVxLczxGkA",
+      "method": "POST",
+      "path": "/v1/enroll",
+      "timestamp": "1793476950",
+      "nonce": "enroll-nonce-abcdef0123",
+      "body": "{\"code\":\"BTCW-ABCDE-FGHJK-MNPQR-STVWX\",\"public_key\":\"Lk6D_bLYj4jF8D5mPDnqP5x1NjErYqKwmpVxLczxGkA\",\"hardware\":{\"hardware_type\":\"cpu\",\"os\":\"linux\"}}",
+      "body_sha256_hex": "d85b98b6183a2bc1287ece1ac3ac0b8490685e371673267ba480537183883c6b",
+      "canonical_message": "BTCNAI1\nPOST\n/v1/enroll\n1793476950\nenroll-nonce-abcdef0123\nd85b98b6183a2bc1287ece1ac3ac0b8490685e371673267ba480537183883c6b",
+      "signature": "aFJGxO5oQTqVo8FTdDGzD8Ube9I3QwkfGgLR0UeJWccJGsSOIC2r_AWCGiZ2bG2edfSXGVw6Jb__kOSALjjWAA"
+    }
+  ]
+}
