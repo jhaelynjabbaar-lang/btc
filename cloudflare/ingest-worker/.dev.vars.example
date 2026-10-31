@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local `wrangler dev` (git-ignored). Never commit real values.
+SUPABASE_SECRET_KEY=
+# Local-only escape hatch so `wrangler dev` over http://127.0.0.1 works. NEVER set this on the deployed Worker.
+ALLOW_INSECURE_HTTP=

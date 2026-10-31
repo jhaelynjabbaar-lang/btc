@@ -2,7 +2,7 @@ export type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "dashboard" | "engine" | "research" | "vuln" | "scanner" | "monitor" | "database" | "reports";
+  icon: "dashboard" | "engine" | "research" | "vuln" | "scanner" | "monitor" | "database" | "reports" | "workers";
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -12,6 +12,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/vulnerabilities", label: "Vulnerabilities", description: "CVE and advisory intelligence", icon: "vuln" },
   { href: "/scanner", label: "Code Scanner", description: "Static AI code review", icon: "scanner" },
   { href: "/monitoring", label: "Monitoring", description: "Release and advisory monitoring", icon: "monitor" },
+  { href: "/workers", label: "Workers", description: "Agent fleet and enrollment", icon: "workers" },
   { href: "/database", label: "Database", description: "Research database", icon: "database" },
   { href: "/reports", label: "Reports", description: "Security report generator", icon: "reports" },
 ];

@@ -490,6 +490,53 @@ export type Database = {
           },
         ]
       }
+      worker_commands: {
+        Row: {
+          acked_at: string | null
+          command: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          first_delivered_at: string | null
+          id: string
+          owner_id: string
+          status: string
+          worker_id: string
+        }
+        Insert: {
+          acked_at?: string | null
+          command: string
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          first_delivered_at?: string | null
+          id?: string
+          owner_id: string
+          status?: string
+          worker_id: string
+        }
+        Update: {
+          acked_at?: string | null
+          command?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          first_delivered_at?: string | null
+          id?: string
+          owner_id?: string
+          status?: string
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worker_commands_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       worker_credentials: {
         Row: {
           created_at: string
@@ -568,6 +615,7 @@ export type Database = {
           authorized_at: string | null
           created_at: string
           current_hashrate_hs: number
+          hardware: Json
           hardware_type: string
           id: string
           last_seen_at: string | null
@@ -583,6 +631,7 @@ export type Database = {
           authorized_at?: string | null
           created_at?: string
           current_hashrate_hs?: number
+          hardware?: Json
           hardware_type?: string
           id?: string
           last_seen_at?: string | null
@@ -598,6 +647,7 @@ export type Database = {
           authorized_at?: string | null
           created_at?: string
           current_hashrate_hs?: number
+          hardware?: Json
           hardware_type?: string
           id?: string
           last_seen_at?: string | null
@@ -616,7 +666,35 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      ack_worker_commands: {
+        Args: { p_ids: string[]; p_worker_id: string }
+        Returns: Json
+      }
+      claim_worker_commands: {
+        Args: { p_limit: number; p_worker_id: string }
+        Returns: Json
+      }
+      enroll_worker: {
+        Args: {
+          p_code_hash: string
+          p_hardware: Json
+          p_hardware_type: string
+          p_name: string
+          p_os: string
+          p_public_key: string
+          p_software_version: string
+        }
+        Returns: Json
+      }
+      ingest_telemetry: {
+        Args: {
+          p_rows: Json
+          p_software_version: string
+          p_uptime_s: number
+          p_worker_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Cloudflare Worker has its own package/tsconfig; ignore generated + built files.
+    "cloudflare/**/dist/**",
+    "cloudflare/**/worker-configuration.d.ts",
+    "cloudflare/**/.wrangler/**",
   ]),
 ]);
 
