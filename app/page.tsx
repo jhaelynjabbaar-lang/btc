@@ -1,65 +1,191 @@
-import Image from "next/image";
+import type { Metadata } from "next";
+import { Badge, NotConfigured, PageHeader, Panel, Stat, StageBadge } from "@/components/ui";
+import { formatDifficulty, formatHashrate, getNetworkStatus, type NetworkStatus } from "@/lib/bitcoin-network";
 
-export default function Home() {
+export const metadata: Metadata = { title: "Dashboard" };
+
+// Rendered per request; the mempool.space responses themselves are cached for 60s
+// through the fetch data cache (see lib/bitcoin-network.ts).
+export const dynamic = "force-dynamic";
+
+const nf = new Intl.NumberFormat("en-US");
+
+function ago(seconds: number): string {
+  if (seconds < 0) seconds = 0;
+  if (seconds < 90) return `${Math.round(seconds)}s ago`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min ago`;
+  return `${(seconds / 3600).toFixed(1)} h ago`;
+}
+
+const DASH = <span className="text-faint">—</span>;
+
+function NetworkPanel({ net }: { net: NetworkStatus }) {
+  const allFailed = net.tipHeight === null && !net.latestBlock && !net.fees && !net.difficulty && !net.mempool;
+  const now = net.asOf ? Date.parse(net.asOf) / 1000 : null;
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <Panel
+      title="Bitcoin network status"
+      className="lg:col-span-2"
+      badge={
+        allFailed ? (
+          <Badge tone="danger">Source unavailable</Badge>
+        ) : net.failed.length ? (
+          <Badge tone="warn">Partial data</Badge>
+        ) : (
+          <Badge tone="ok">Live</Badge>
+        )
+      }
+    >
+      {allFailed ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm text-muted">
+          <div className="font-medium text-danger">Could not reach mempool.space.</div>
+          <p className="mt-1">No network values are shown because none could be fetched. This page retries on the next request.</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat
+              label="Block height"
+              value={net.tipHeight !== null ? nf.format(net.tipHeight) : DASH}
+              hint={
+                net.latestBlock && now
+                  ? `Last block ${ago(now - net.latestBlock.time)} · ${nf.format(net.latestBlock.txCount)} txs${net.latestBlock.pool ? ` · ${net.latestBlock.pool}` : ""}`
+                  : undefined
+              }
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <Stat
+              label="Hashrate (est.)"
+              value={net.difficulty?.hashrate != null ? formatHashrate(net.difficulty.hashrate) : DASH}
+              hint="Current network estimate"
+            />
+            <Stat
+              label="Difficulty"
+              value={net.difficulty?.current != null ? formatDifficulty(net.difficulty.current) : DASH}
+              hint={
+                net.difficulty
+                  ? `Next adjustment ${net.difficulty.estimatedChangePercent >= 0 ? "+" : ""}${net.difficulty.estimatedChangePercent.toFixed(2)}% (est.) in ${nf.format(net.difficulty.remainingBlocks)} blocks`
+                  : undefined
+              }
+            />
+            <Stat
+              label="Mempool"
+              value={net.mempool ? `${nf.format(net.mempool.count)} tx` : DASH}
+              hint={net.mempool ? `${(net.mempool.vsize / 1e6).toFixed(1)} MvB pending` : undefined}
+            />
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-[11px] uppercase tracking-wider text-faint">Recommended fees (sat/vB)</div>
+            {net.fees ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat label="Fastest" value={net.fees.fastest} />
+                <Stat label="~30 min" value={net.fees.halfHour} />
+                <Stat label="~1 hour" value={net.fees.hour} />
+                <Stat label="Economy" value={net.fees.economy} />
+              </div>
+            ) : (
+              <p className="text-sm text-muted">Fee estimates unavailable.</p>
+            )}
+          </div>
+
+          {net.difficulty && (
+            <div className="mt-4">
+              <div className="mb-1.5 flex justify-between text-xs text-muted">
+                <span>Difficulty epoch progress</span>
+                <span className="font-mono">{net.difficulty.progressPercent.toFixed(1)}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-electric to-neon"
+                  style={{ width: `${Math.min(100, Math.max(0, net.difficulty.progressPercent))}%` }}
+                />
+              </div>
+              <div className="mt-1 text-xs text-faint">Retarget at block {nf.format(net.difficulty.nextRetargetHeight)}</div>
+            </div>
+          )}
+
+          {net.failed.length > 0 && (
+            <p className="mt-3 text-xs text-warn">Unavailable right now: {net.failed.join(", ")}.</p>
+          )}
+        </>
+      )}
+      <p className="mt-4 text-xs text-faint">
+        Source: {net.source} (public API, fetched server-side, cached up to 60 s)
+        {net.asOf ? ` · data as of ${net.asOf.replace("T", " ").slice(0, 19)} UTC` : ""}
+      </p>
+    </Panel>
+  );
+}
+
+function EngineProviderRow({ name, envVar, configured }: { name: string; envVar: string; configured: boolean }) {
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-lg border border-line bg-void/50 px-3 py-2.5">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-ink">{name}</div>
+        <div className="truncate font-mono text-xs text-faint">{envVar}</div>
+      </div>
+      {configured ? <Badge tone="info">Key present · unverified</Badge> : <Badge tone="muted">Not configured</Badge>}
+    </li>
+  );
+}
+
+export default async function DashboardPage() {
+  const net = await getNetworkStatus();
+  // Only a boolean is derived; the key value is never read into the UI.
+  const nvidiaConfigured = Boolean(process.env.NVIDIA_API_KEY);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Operations overview"
+        title="Bitcoin Security Intelligence"
+        subtitle="Live Bitcoin network status, plus the security tooling being built stage by stage. Panels without a data source say so."
+      />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <NetworkPanel net={net} />
+
+        <Panel title="AI engine status" badge={<StageBadge stage="engine" />}>
+          <ul className="space-y-2">
+            <EngineProviderRow name="NVIDIA Nemotron 3 Ultra" envVar="NVIDIA_API_KEY" configured={nvidiaConfigured} />
+          </ul>
+          <p className="mt-3 text-sm text-muted">
+            The AI provider layer is not built yet — coming in Stage 6. Keys are read server-side only; a key being
+            present here has not been tested.
+          </p>
+        </Panel>
+
+        <Panel title="Security monitoring overview" badge={<StageBadge stage="monitoring" />}>
+          <NotConfigured stage="monitoring">No monitors are running. Planned sources:</NotConfigured>
+          <ul className="mt-3 space-y-1.5 text-sm text-muted">
+            {[
+              "bitcoin/bitcoin GitHub releases",
+              "bitcoincore.org security advisories",
+              "GitHub Security Advisories",
+              "NVD CVE API 2.0",
+            ].map((s) => (
+              <li key={s} className="flex items-center justify-between gap-2">
+                <span>{s}</span>
+                <Badge>Planned</Badge>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+
+        <Panel title="Vulnerability statistics" badge={<StageBadge stage="vulnerabilities" />}>
+          <NotConfigured stage="vulnerabilities">
+            No vulnerability feed is connected, so there are no counts to show.
+          </NotConfigured>
+        </Panel>
+
+        <Panel title="Research activity" badge={<StageBadge stage="research" />}>
+          <NotConfigured stage="research">No research database exists yet, so there is no activity to show.</NotConfigured>
+        </Panel>
+
+        <Panel title="Recent intelligence reports" className="lg:col-span-3" badge={<StageBadge stage="reports" />}>
+          <NotConfigured stage="reports">No reports have been generated. The report generator has not been built yet.</NotConfigured>
+        </Panel>
+      </div>
+    </>
   );
 }
