@@ -1,5 +1,5 @@
 // Applies SQL migrations from ./drizzle to the database in DATABASE_URL (Neon).
-// Usage: DATABASE_URL=... npm run db:migrate      (never prints the URL)
+// Usage: DATABASE_URL=... npm run db:migrate (also runs automatically on Vercel production builds via vercel-build)      (never prints the URL)
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { migrate } from "drizzle-orm/neon-http/migrator";
