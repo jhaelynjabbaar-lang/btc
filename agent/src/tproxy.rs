@@ -256,7 +256,7 @@ impl Config {
 
     /// The pool-side user identity the translator authenticates with.
     pub fn sv2_user_identity(&self) -> Option<String> {
-        self.stratum_v2.user_identity.clone().or_else(|| self.pool.user.clone()).or_else(|| self.payout_address.clone())
+        self.stratum_v2.user_identity.as_deref().map(|u| self.expand_worker(u)).or_else(|| self.pool_user())
     }
 }
 
