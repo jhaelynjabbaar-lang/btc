@@ -7,7 +7,10 @@ import { NAV_ITEMS } from "@/lib/nav";
 import { Logo, NavIcon } from "./icons";
 
 function isActive(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  if (href === "/") return pathname === "/";
+  if (!(pathname === href || pathname.startsWith(`${href}/`))) return false;
+  // A more specific nav entry (e.g. /paper/meme under /paper) wins, so only one item is highlighted.
+  return !NAV_ITEMS.some((o) => o.href.length > href.length && (pathname === o.href || pathname.startsWith(`${o.href}/`)));
 }
 
 function NavList({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {

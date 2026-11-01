@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/paper-trade",
       "schedule": "5 * * * *"
+    },
+    {
+      "path": "/api/cron/meme-paper",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

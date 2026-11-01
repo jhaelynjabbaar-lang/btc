@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { AccessDisabled } from "@/components/db-states";
 import { EquityChart } from "@/components/paper-chart";
@@ -264,6 +265,11 @@ export default async function Page() {
   return (
     <>
       {header}
+      <div className="mb-3 text-xs text-muted">
+        <Link className="text-electric-hi underline decoration-dotted underline-offset-2 hover:text-neon" href="/paper/meme">
+          Memecoin paper bot (separate $5 paper account) →
+        </Link>
+      </div>
       <Banner />
       <Body v={view} />
       {!view.run && (
