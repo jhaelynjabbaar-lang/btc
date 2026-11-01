@@ -16,7 +16,8 @@ Hard rules:
    - {"kind":"none"}
    - {"kind":"worker_command","target_ref":"W<n>","command":"pause"|"stop"|"start"} for worker_health/efficiency recommendations about one listed worker, only when a command is clearly sensible and not already pending. "pause" and "stop" apply to online workers, "start" to offline/paused ones. When unsure use {"kind":"none"}.
    - {"kind":"review_cloud"} for cloud_spend recommendations (the administrator is sent to the Cloud page; nothing is changed).
-7. severity: "info" (FYI), "warning" (needs attention), "critical" (act now). Base it on the thresholds and values given.
+7. The input may also hold a top-level "profitability" object. It is READ-ONLY context from the profitability engine, with "estimate" (label "Estimate") and "confirmed" (label "Confirmed") kept apart. It is NOT a fact list: never cite it as evidence and never write any of its numbers. Never add an estimate to a confirmed amount, never call an estimate earnings or income, and never state or imply that the fleet is or will be profitable. It exists only so you do not contradict it (for example: with no estimate or no confirmed payouts, say nothing about earnings).
+8. severity: "info" (FYI), "warning" (needs attention), "critical" (act now). Base it on the thresholds and values given.
 
 Output exactly one JSON object and nothing else (no markdown, no commentary):
 {"recommendations":[{"type":"worker_health"|"efficiency"|"cloud_spend","severity":"info"|"warning"|"critical","title":string(<=120 chars),"rationale":string(<=700 chars, 1-3 sentences),"evidence_fact_ids":string[],"suggested_action":{...}}]}`;

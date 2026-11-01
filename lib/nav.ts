@@ -2,7 +2,7 @@ export type NavItem = {
   href: string;
   label: string;
   description: string;
-  icon: "dashboard" | "engine" | "research" | "vuln" | "scanner" | "monitor" | "database" | "reports" | "workers" | "cloud" | "ai";
+  icon: "dashboard" | "engine" | "research" | "vuln" | "scanner" | "monitor" | "database" | "reports" | "workers" | "cloud" | "ai" | "financials";
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/workers", label: "Workers", description: "Agent fleet and enrollment", icon: "workers" },
   { href: "/repair", label: "PC Repair", description: "Windows 7 repair helper: pairing, reports, suggestions", icon: "workers" },
   { href: "/cloud", label: "Cloud", description: "Providers, approvals and spend limits", icon: "cloud" },
+  { href: "/financials", label: "Financials", description: "Estimated vs confirmed profitability (admin)", icon: "financials" },
   { href: "/ai", label: "AI Control", description: "Recommendations from NVIDIA Nemotron (admin approves)", icon: "ai" },
   { href: "/database", label: "Database", description: "Research database", icon: "database" },
   { href: "/reports", label: "Reports", description: "Security report generator", icon: "reports" },

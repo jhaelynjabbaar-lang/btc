@@ -6,6 +6,7 @@ import { getAiConfig } from "@/lib/ai/config";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/types";
 import { ownerIdFor, type CloudActor } from "@/lib/cloud/service";
+import { loadProfitSummary } from "@/lib/profit/service";
 import { BUDGET, STATUS_FROM_DB, WINDOWS, type JobType, type RecStatus } from "./config";
 import type { RawData } from "./context";
 import { redactString } from "./redact";
@@ -39,7 +40,7 @@ async function loadRaw(actor: CloudActor, now: Date): Promise<RawData> {
   const db = getSupabaseServer();
   const owner = ownerIdFor(actor);
   const since = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
-  const [workers, agg, commands, providers, resources, limits, controls, ledger] = await Promise.all([
+  const [workers, agg, commands, providers, resources, limits, controls, ledger, profitability] = await Promise.all([
     db.from("workers").select("id, name, status, hardware_type, current_hashrate_hs, last_seen_at").limit(200),
     (db.rpc as unknown as (n: string, a: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>)("ai_worker_aggregates", {
       p_now: now.toISOString(),
@@ -52,6 +53,7 @@ async function loadRaw(actor: CloudActor, now: Date): Promise<RawData> {
     db.from("spend_limits").select("scope, provider_id, period, limit_usd, enabled").eq("owner_id", owner).limit(100),
     db.from("cloud_controls").select("kill_switch_engaged").eq("owner_id", owner).maybeSingle(),
     db.from("ledger").select("amount_usd").eq("owner_id", owner).eq("kind", "expense_cloud").gte("occurred_at", since(WINDOWS.ledger_days)).limit(1000),
+    loadProfitSummary(actor), // never throws; null when unreadable (the analysis then simply has no profitability context)
   ]);
   for (const r of [workers, commands, providers, resources, limits, controls, ledger]) if (r.error) throw new Error("query failed");
   if (agg.error) throw new Error("aggregate query failed");
@@ -84,6 +86,7 @@ async function loadRaw(actor: CloudActor, now: Date): Promise<RawData> {
     })),
     killSwitchEngaged: controls.data?.kill_switch_engaged ?? false,
     cloudExpensesUsd: expenses.length ? expenses.reduce((a, b) => a + b, 0) : null,
+    profitability,
   };
 }
 

@@ -56,6 +56,13 @@ const paths: Record<NavItem["icon"], React.ReactNode> = {
       <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4M10 12h4" />
     </>
   ),
+  financials: (
+    <>
+      <path d="M4 19V5M4 19h16" />
+      <path d="M8 15l3-4 3 2 5-6" />
+      <path d="M16 7h3v3" />
+    </>
+  ),
   database: (
     <>
       <ellipse cx="12" cy="5.5" rx="8" ry="3" />

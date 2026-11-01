@@ -1,4 +1,5 @@
 import { BUDGET, HOURS_PER_MONTH, JOB_TYPES, THRESHOLDS, WINDOWS, type JobType } from "./config";
+import type { ProfitSummary } from "@/lib/profit/summary";
 import { redactDeep } from "./redact";
 
 /**
@@ -43,6 +44,8 @@ export type RawData = {
   killSwitchEngaged: boolean;
   /** Sum of ledger rows of kind expense_cloud over the ledger window, or null when there are none. */
   cloudExpensesUsd: number | null;
+  /** Phase 8: optional READ-ONLY profitability summary (estimate and confirmed kept apart). Context only, never evidence. */
+  profitability?: ProfitSummary | null;
 };
 
 // ------------------------------------------------------------------------------------------------ output
@@ -61,6 +64,8 @@ export type AnalysisContext = {
   windows: typeof WINDOWS;
   thresholds: typeof THRESHOLDS;
   sections: Partial<Record<JobType, Section>>;
+  /** Present only when the Phase 8 summary could be read. Not a fact list: the model can neither cite it nor copy its numbers. */
+  profitability?: ProfitSummary;
 };
 
 // ------------------------------------------------------------------------------------------------ helpers
@@ -301,7 +306,7 @@ export function buildContext(raw: RawData, jobs: readonly JobType[], now: Date):
     if (!jobs.includes(j)) continue;
     sections[j] = j === "cloud_spend" ? cloudSection(raw, nowMs) : workerSection(j, raw, nowMs);
   }
-  const ctx: AnalysisContext = { generated_at: now.toISOString(), windows: WINDOWS, thresholds: THRESHOLDS, sections };
+  const ctx: AnalysisContext = { generated_at: now.toISOString(), windows: WINDOWS, thresholds: THRESHOLDS, sections, ...(raw.profitability ? { profitability: raw.profitability } : {}) };
   // Facts hold only numbers, enums and operator-chosen names; this removes anything credential-shaped regardless.
   return trimToBudget(redactDeep(ctx));
 }
@@ -329,6 +334,7 @@ export function renderContext(ctx: AnalysisContext): string {
     generated_at: ctx.generated_at,
     windows: ctx.windows,
     thresholds: ctx.thresholds,
+    ...(ctx.profitability ? { profitability: ctx.profitability } : {}),
     sections: Object.fromEntries(
       Object.entries(ctx.sections).map(([k, sec]) => [
         k,
