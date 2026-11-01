@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "cloudflare/**/dist/**",
     "cloudflare/**/worker-configuration.d.ts",
     "cloudflare/**/.wrangler/**",
+    // Rust worker agent (own toolchain); only a vector-generator script is JS/TS.
+    "agent/**",
   ]),
 ]);
 
