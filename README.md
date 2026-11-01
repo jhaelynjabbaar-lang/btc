@@ -52,3 +52,7 @@ Optional: `NVD_API_KEY`, `GITHUB_TOKEN` raise upstream rate limits.
 ## Financials (Phase 8)
 
 `/financials` (admin only) shows public network data (mempool.space, with source and time), labeled **Estimate** profitability from *measured* telemetry hashrate, and **Confirmed** earnings from ledger rows with a pool/chain source and reference. Estimated and confirmed figures are never combined, missing inputs mean "unknown" (never zero), and a tiny or negative result is shown as is. CPU/GPU mining yields essentially nothing; see [docs/profitability.md](docs/profitability.md) for the formula, sources and the optional `BRAIINS_POOL_TOKEN` connection (set by you in Vercel; never created by this repo).
+
+## Windows 7 repair helper
+
+A visible, ask-first repair script for an old Windows 7 PC plus the `/repair` admin page. The server only suggests allowlisted action ids; the person at the PC approves each command with Y/N. See [docs/win7-repair.md](docs/win7-repair.md) for the typed bootstrap, TLS limits (Win7 cannot open `*.vercel.app` itself, so Firefox ESR 115 is step one), the optional Cloudflare relay in `cloudflare/repair-relay`, and what is not verified.

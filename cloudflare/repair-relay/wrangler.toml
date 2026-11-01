@@ -1,0 +1,9 @@
+# BTC Network AI — Windows 7 repair relay (Cloudflare Free plan, workers.dev only). No secrets, no bindings, no storage.
+name = "btc-repair-relay"
+main = "src/index.ts"
+compatibility_date = "2026-10-31"
+workers_dev = true
+preview_urls = false
+
+[vars]
+UPSTREAM = "https://btc-woad-three.vercel.app"

@@ -446,7 +446,7 @@ impl Supervisor {
         if l.generation != current {
             return;
         }
-        let text = redact(&clean_line(&l.text), self.p.miner_cmd.pool_password.as_deref());
+        let text = redact(&clean_line(&crate::parse::strip_ansi(&l.text)), self.p.miner_cmd.pool_password.as_deref());
         if text.trim().is_empty() {
             return;
         }

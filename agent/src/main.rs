@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "btc-agent", version, about)]
 struct Cli {
-    /// State directory (default: the OS config dir, e.g. ~/.config/btc-agent).
+    /// State directory (default: the OS config dir, e.g. ~/.config/btc-agent, or %LOCALAPPDATA%\BTC Network\btc-agent\config on Windows).
     #[arg(long, global = true, env = "BTC_AGENT_HOME")]
     home: Option<PathBuf>,
     #[command(subcommand)]

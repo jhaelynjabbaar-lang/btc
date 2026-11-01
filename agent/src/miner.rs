@@ -1,6 +1,7 @@
 //! The miner (and, in Stratum V2 mode, the local translator proxy) is an existing open-source program run as a visible
 //! child process. This module only starts it, reads its output line by line, and stops it (SIGTERM, then kill on unix;
-//! kill on Windows). It never hides the process.
+//! `taskkill /T /F` on Windows, which also ends anything the child started). It never hides the process: on Windows it
+//! shares the agent's own console window.
 
 use crate::config::MinerCommand;
 use anyhow::{Context, Result};
@@ -85,14 +86,22 @@ impl MinerProcess {
 
     /// Same as [`spawn`](Self::spawn) for either child (`Source::Translator` for the SV2 translator proxy).
     pub fn spawn_as(cmd: &MinerCommand, tx: Sender<MinerLine>, generation: u64, source: Source) -> Result<Self> {
-        let mut child = Command::new(&cmd.program)
+        let mut command = Command::new(&cmd.program);
+        command
             .args(&cmd.args)
             .envs(cmd.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("starting {} {}", source.label(), cmd.program.display()))?;
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // Own process group (NOT a hidden window: the child still prints into this console). A Ctrl-C in the console
+            // then reaches only the agent, which stops its children itself in an orderly way.
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+            command.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        }
+        let mut child = command.spawn().with_context(|| format!("starting {} {}", source.label(), cmd.program.display()))?;
         let pid = child.id();
         if let Some(o) = child.stdout.take() {
             spawn_reader(o, tx.clone(), source, generation, false);
@@ -128,6 +137,11 @@ impl MinerProcess {
         }
         #[cfg(not(unix))]
         let _ = grace;
+        #[cfg(windows)]
+        {
+            // The whole tree, so a miner started through a wrapper (.bat / launcher) does not leave a worker behind.
+            let _ = crate::winplat::kill_process_tree(self.pid);
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
         StopOutcome::Killed
@@ -138,6 +152,8 @@ impl Drop for MinerProcess {
     /// Never leave an orphaned child behind, even on panic.
     fn drop(&mut self) {
         if self.try_wait().is_none() {
+            #[cfg(windows)]
+            let _ = crate::winplat::kill_process_tree(self.pid);
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
@@ -149,4 +165,58 @@ pub enum StopOutcome {
     AlreadyExited,
     Graceful,
     Killed,
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::sync::mpsc::{RecvTimeoutError, channel};
+
+    fn cmd(program: &str, args: &[&str]) -> MinerCommand {
+        MinerCommand {
+            program: program.into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            display_args: Vec::new(),
+            pool_password: None,
+            env: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn stop_ends_the_child_and_its_pid_is_gone() {
+        let (tx, _rx) = channel();
+        let mut p = MinerProcess::spawn(&cmd("ping.exe", &["-n", "60", "127.0.0.1"]), tx, 1).unwrap();
+        assert!(crate::status::pid_alive(p.pid), "child should be running");
+        let pid = p.pid;
+        assert_eq!(p.stop(Duration::from_secs(2)), StopOutcome::Killed);
+        assert!(!crate::status::pid_alive(pid), "child must be gone after stop");
+    }
+
+    #[test]
+    fn stop_kills_the_whole_tree_so_no_orphan_keeps_the_output_pipe_open() {
+        let (tx, rx) = channel();
+        // cmd.exe starts ping.exe as a grandchild that inherits the pipes; if it survived, the readers would never see EOF.
+        let mut p = MinerProcess::spawn(&cmd("cmd.exe", &["/C", "ping -n 60 127.0.0.1"]), tx, 1).unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        p.stop(Duration::from_secs(2));
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            match rx.recv_timeout(Duration::from_millis(250)) {
+                Err(RecvTimeoutError::Disconnected) => break,
+                Err(RecvTimeoutError::Timeout) if Instant::now() > deadline => panic!("an orphaned grandchild still holds the pipe"),
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn job_object_can_be_created_and_is_idempotent() {
+        // The test process itself is put in a kill-on-close job; it must keep running normally afterwards.
+        crate::winplat::kill_children_with_agent().unwrap();
+        crate::winplat::kill_children_with_agent().unwrap();
+        let (tx, _rx) = channel();
+        let mut p = MinerProcess::spawn(&cmd("cmd.exe", &["/C", "exit 0"]), tx, 1).unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let _ = p.stop(Duration::from_secs(1));
+    }
 }

@@ -235,9 +235,12 @@ user = "jhaelyngta.{worker_name}"
 [miner]
 # Path to an existing open-source miner (e.g. cpuminer-opt). The agent never writes or bundles a miner.
 # path = "/usr/local/bin/cpuminer"
+# Windows: use SINGLE quotes so the backslashes are taken literally (see agent/WINDOWS.md), e.g.
+# path = 'C:\btc-agent\cpuminer-opt\cpuminer-avx2.exe'
 # Placeholders: {pool_url} {pool_user} {pool_password} {payout_address} {threads}
 # In sv2 mode {pool_url} is the translator's loopback address (stratum+tcp://127.0.0.1:<downstream_port>).
 # args = ["-a", "sha256d", "-o", "{pool_url}", "-u", "{pool_user}", "-p", "{pool_password}"]
+# cpuminer-opt prints colors even into a pipe; add "--no-color" to args for clean logs (the agent also strips them).
 kind = "cpuminer"        # or "generic" (then set hashrate_regex / accepted_regex / rejected_regex)
 threads_flag = "-t"      # appended as "-t <cpu_threads>" when args has no {threads}
 
@@ -533,7 +536,7 @@ payout_address = "{ADDR}"
 url = "stratum+tcp://pool.example.com:3333"
 password = "hunter22"
 [miner]
-path = "{}"
+path = '{}'
 args = ["-o", "{{pool_url}}", "-u", "{{pool_user}}", "-p", "{{pool_password}}"]
 threads_flag = "-t"
 "#,
@@ -660,6 +663,34 @@ threads_flag = "-t"
         assert!(c.problems(8).iter().any(|m| m.contains("miner.args")));
     }
 
+    /// The config snippet in WINDOWS.md must stay valid: it is what a beginner copies.
+    #[test]
+    fn the_windows_guide_config_snippet_parses_and_builds_the_documented_command() {
+        let md = include_str!("../WINDOWS.md");
+        let start = md.find("```toml\n[pool]").expect("snippet in WINDOWS.md");
+        let body = &md[start + "```toml\n".len()..];
+        let snippet = &body[..body.find("```").unwrap()];
+        let c = Config::parse(snippet).unwrap();
+        assert_eq!(c.pool.worker_name.as_deref(), Some("pc1"));
+        // The snippet only overrides lines of the generated template; merged, the user name is jhaelyngta.pc1.
+        assert_eq!(c.pool.user.as_deref(), Some("jhaelyngta.{worker_name}"));
+        assert_eq!(c.pool_user().as_deref(), Some("jhaelyngta.pc1"));
+        assert_eq!(c.miner.path.as_deref(), Some(Path::new(r"C:\btc-agent\cpuminer-opt\cpuminer-sse2.exe")));
+        assert_eq!(c.limits.cpu_threads, Some(2));
+        let f = fake_miner_file();
+        let mut c = c;
+        // `threads_flag = "-t"` already sits in the generated template, so the guide does not repeat it.
+        assert_eq!(Config::parse(TEMPLATE).unwrap().miner.threads_flag.as_deref(), Some("-t"));
+        c.miner.threads_flag = Some("-t".into());
+        c.miner.path = Some(f.path().to_path_buf());
+        assert!(c.problems(8).is_empty(), "{:?}", c.problems(8));
+        let cmd = c.miner_command(8).unwrap();
+        assert_eq!(
+            cmd.args,
+            ["-a", "sha256d", "-o", "stratum+tcp://stratum.braiins.com:3333", "-u", "jhaelyngta.pc1", "-p", "x", "--no-color", "-t", "2"]
+        );
+    }
+
     #[test]
     fn pool_url_rules() {
         let f = fake_miner_file();
@@ -703,6 +734,7 @@ threads_flag = "-t"
     }
 
     // ---------------------------------------------------------------- Phase 5: mode / Stratum V2
+    #[cfg(unix)]
     const SRI_KEY: &str = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72";
 
     #[cfg(unix)]
