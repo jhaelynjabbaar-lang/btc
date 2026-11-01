@@ -50,6 +50,12 @@ const paths: Record<NavItem["icon"], React.ReactNode> = {
       <path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9H7Z" />
     </>
   ),
+  ai: (
+    <>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4M10 12h4" />
+    </>
+  ),
   database: (
     <>
       <ellipse cx="12" cy="5.5" rx="8" ry="3" />
