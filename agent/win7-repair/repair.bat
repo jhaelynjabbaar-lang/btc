@@ -37,7 +37,7 @@ $TokFile = Join-Path $StateDir 'device.txt'
 $Findings = New-Object System.Collections.ArrayList
 $Errors = New-Object System.Collections.ArrayList
 $Results = New-Object System.Collections.ArrayList
-$St = @{}
+$StatusMap = @{}
 $Host0 = @{}
 $script:IsAdmin = $false
 
@@ -82,7 +82,7 @@ function Say($m, $c) { if ($c) { Write-Host $m -ForegroundColor $c } else { Writ
 function Clean($s, $max) { if ($s -eq $null) { return '' }; $t = ([string]$s) -replace '[^\x20-\x7E]', ' '; $t = ($t -replace '\s+', ' ').Trim(); if ($t.Length -gt $max) { $t = $t.Substring(0, $max) }; return $t }
 function AddErr($where, $msg) { [void]$Errors.Add(@{ where = (Clean $where 40); message = (Clean $msg 200) }); Log ('ERROR ' + $where + ': ' + $msg) }
 function AddF($id, $status, $value) {
-  $St[$id] = $status
+  $StatusMap[$id] = $status
   [void]$Findings.Add(@{ id = $id; status = $status; value = (Clean $value 120) })
   $col = 'Gray'; $tag = '  ?   '
   if ($status -eq 'ok') { $col = 'Green'; $tag = '  ok  ' } elseif ($status -eq 'warn') { $col = 'Yellow'; $tag = ' WARN ' } elseif ($status -eq 'fail') { $col = 'Red'; $tag = ' FAIL ' }
@@ -94,7 +94,8 @@ function RegGet($path, $name) { try { $o = Get-ItemProperty -Path $path -ErrorAc
 function RegDefault($path) { try { return (Get-Item -Path $path -ErrorAction Stop).GetValue('') } catch { return $null } }
 function PingHost($h) { try { $r = (New-Object Net.NetworkInformation.Ping).Send($h, 2500); return ($r.Status.ToString() -eq 'Success') } catch { return $false } }
 function Sha256File($path) { $sha = New-Object Security.Cryptography.SHA256Managed; $fs = [IO.File]::OpenRead($path); try { $h = $sha.ComputeHash($fs) } finally { $fs.Close() }; return (([BitConverter]::ToString($h)) -replace '-', '').ToLower() }
-function Json($o) { Add-Type -AssemblyName System.Web.Extensions; $s = New-Object System.Web.Script.Serialization.JavaScriptSerializer; $s.MaxJsonLength = 1000000; return $s.Serialize($o) }
+function JStr($v) { $t = [string]$v; $sb = New-Object System.Text.StringBuilder; foreach ($ch in $t.ToCharArray()) { $c = [int]$ch; if ($ch -eq [char]34) { [void]$sb.Append([char]92); [void]$sb.Append([char]34) } elseif ($ch -eq [char]92) { [void]$sb.Append([char]92); [void]$sb.Append([char]92) } elseif ($c -lt 32 -or $c -gt 126) { [void]$sb.Append(('\u{0:x4}' -f $c)) } else { [void]$sb.Append($ch) } }; return ([string][char]34) + $sb.ToString() + ([string][char]34) }
+function Json($o) { if ($o -eq $null) { return 'null' }; $b = $o; if ($b -is [System.Management.Automation.PSObject]) { $b = $b.PSObject.BaseObject }; if ($b -is [bool]) { if ($b) { return 'true' } else { return 'false' } }; if ($b -is [int] -or $b -is [long] -or $b -is [double] -or $b -is [decimal] -or $b -is [single] -or $b -is [uint32] -or $b -is [uint64] -or $b -is [int16] -or $b -is [byte]) { return ([string]$b).Replace(',', '.') }; if ($b -is [string] -or $b -is [char]) { return (JStr $b) }; if ($b -is [System.Collections.IDictionary]) { $parts = @(); foreach ($k in $b.Keys) { $parts += ((JStr $k) + ':' + (Json $b[$k])) }; return '{' + ($parts -join ',') + '}' }; if ($b -is [System.Collections.IEnumerable]) { $parts = @(); foreach ($x in $b) { $parts += (Json $x) }; return '[' + ($parts -join ',') + ']' }; return (JStr $b) }
 function UnJson($t) { Add-Type -AssemblyName System.Web.Extensions; $s = New-Object System.Web.Script.Serialization.JavaScriptSerializer; return $s.DeserializeObject($t) }
 function HotFixes { try { return @(Get-HotFix -ErrorAction Stop | ForEach-Object { $_.HotFixId }) } catch { return @() } }
 
@@ -103,8 +104,8 @@ function OfflineCode {
   $hex = ''; $hd = '0123456789ABCDEF'
   for ($j = 0; $j -lt 12; $j++) {
     $a = 0; $b = 0
-    $sa = $St[$OfflineOrder[2 * $j]]; if ($sa) { $a = $map[$sa] }
-    $sb = $St[$OfflineOrder[2 * $j + 1]]; if ($sb) { $b = $map[$sb] }
+    $sa = $StatusMap[$OfflineOrder[2 * $j]]; if ($sa) { $a = $map[$sa] }
+    $sb = $StatusMap[$OfflineOrder[2 * $j + 1]]; if ($sb) { $b = $map[$sb] }
     $hex += $hd[($a * 4) + $b]
   }
   $sum = 0; for ($i = 0; $i -lt 12; $i++) { $sum += $hd.IndexOf($hex[$i]) * ($i + 1) }
@@ -383,7 +384,7 @@ function Summary {
 }
 function LocalSuggestions {
   $sug = New-Object System.Collections.ArrayList
-  foreach ($id in $ActionIds) { $a = $Actions[$id]; if ($id -eq 'install_firefox') { continue }; foreach ($r in $a.related) { $s = $St[$r]; if ($s -eq 'warn' -or $s -eq 'fail') { [void]$sug.Add($id); break } } }
+  foreach ($id in $ActionIds) { $a = $Actions[$id]; if ($id -eq 'install_firefox') { continue }; foreach ($r in $a.related) { $s = $StatusMap[$r]; if ($s -eq 'warn' -or $s -eq 'fail') { [void]$sug.Add($id); break } } }
   return @($sug.ToArray())
 }
 function Menu {
@@ -393,7 +394,7 @@ function Menu {
     Say '4) Send report to server  5) Copy compact report to clipboard (for the website)  6) Re-run checks   0) Exit' 'White'
     $c = Read-Host 'Choose'
     if ($c -eq '0') { return }
-    elseif ($c -eq '1') { $s = LocalSuggestions; if ($s.Count -eq 0) { Say 'Nothing to fix based on the checks.' 'Green' } else { foreach ($id in $s) { Say ('Suggested: ' + $id + ' - ' + $Actions[$id].title) 'Yellow' }; if (Ask 'Go through them one by one (each asks Y/N)?') { foreach ($id in $s) { [void](RunAction $id $false) } } } }
+    elseif ($c -eq '1') { $s = @(LocalSuggestions); if ($s.Count -eq 0) { Say 'Nothing to fix based on the checks.' 'Green' } else { foreach ($id in $s) { Say ('Suggested: ' + $id + ' - ' + $Actions[$id].title) 'Yellow' }; if (Ask 'Go through them one by one (each asks Y/N)?') { foreach ($id in $s) { [void](RunAction $id $false) } } } }
     elseif ($c -eq '2') { $o = RunAction 'download_firefox' $false; if ($o -eq 'ran_ok') { [void](RunAction 'install_firefox' $false) } }
     elseif ($c -eq '3') { Say ('Ids: ' + ($ActionIds -join ', ')) 'Gray'; $id = (Read-Host 'Action id').Trim(); [void](RunAction $id $false) }
     elseif ($c -eq '4') { SendToServer }
