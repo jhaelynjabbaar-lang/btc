@@ -66,7 +66,7 @@ fn sv2_config(translator: PathBuf, port: u16, miner_extra: &[&str]) -> Config {
     Config {
         payout_address: Some(ADDR.into()),
         mode: Some(PoolMode::Sv2),
-        pool: PoolConfig { url: None, user: None, password: Some("hunter22".into()) },
+        pool: PoolConfig { url: None, user: None, worker_name: None, password: Some("hunter22".into()) },
         miner: MinerConfig {
             path: Some(example_path("fake_sv1_miner")),
             args,

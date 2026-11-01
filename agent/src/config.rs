@@ -23,6 +23,9 @@ pub struct PoolConfig {
     pub url: Option<String>,
     /// Pool username (usually `<public payout address>.<worker name>`). Defaults to `payout_address`.
     pub user: Option<String>,
+    /// Worker name for the `{worker_name}` placeholder in `user` / `stratum_v2.user_identity`, e.g. `rig1`
+    /// (letters, digits, `-`, `_`; max 32). Empty or unset: this machine's host name (sanitized).
+    pub worker_name: Option<String>,
     /// Pool password (usually `x`). Passed through to the miner as configured.
     pub password: Option<String>,
 }
@@ -219,10 +222,15 @@ pub const TEMPLATE: &str = r#"# BTC Network AI agent configuration.
 mode = "sv1"
 
 [pool]
+# Default pool: Braiins Pool (official docs: https://academy.braiins.com/braiins-pool/btc-mining-setup).
 # Stratum V1 URL (mode = "sv1"), no credentials in the URL:
-# url = "stratum+tcp://pool.example.com:3333"
-# user = "<payout address>.<worker name>"   # defaults to payout_address
-# password = "x"
+url = "stratum+tcp://stratum.braiins.com:3333"
+# Format: userName.workerName. The account name (not a secret) is pre-filled; {worker_name} is replaced by `worker_name`
+# below, or by this machine's host name when that is unset. The agent refuses to run if the worker part ends up empty.
+# The agent never creates or logs in to a Braiins account.
+user = "jhaelyngta.{worker_name}"
+# worker_name = "rig1"                      # letters, digits, - and _ (max 32); default: this machine's host name
+# password = "x"                            # Braiins accepts anything or empty
 
 [miner]
 # Path to an existing open-source miner (e.g. cpuminer-opt). The agent never writes or bundles a miner.
@@ -243,12 +251,15 @@ status_line_secs = 60
 
 # Stratum V2 via a local SRI translator proxy (translator_sv2). The agent writes the proxy's config, starts it as a second
 # visible child process, waits for its port, then points the miner at it. Set mode = "sv2" and enabled = true together.
+# Pre-filled for Braiins Pool. Official docs: https://academy.braiins.com/braiins-pool/stratum-v2-manual
+#   SV2 URL: stratum2+tcp://stratum.braiins.com:3333/9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna
+# (host:port, then the pool's PUBLIC authority key = the URL path). See docs/stratum.md for what is not verified (port 3333 vs 3336).
 [stratum_v2]
 enabled = false
 # translator_path = "/usr/local/bin/translator_sv2"  # default: translator_sv2 on PATH
-# upstream_address = "pool.example.com:3333"         # the pool's Stratum V2 host:port, from the pool's own docs
-# authority_pubkey = "9..."                          # the pool's PUBLIC authority key, from the pool's own docs
-# user_identity = "<account>.<worker>"               # defaults to pool.user, then payout_address
+upstream_address = "stratum.braiins.com:3333"
+authority_pubkey = "9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna"
+# user_identity = "<account>.<worker>"               # defaults to pool.user (see [pool]); "{worker_name}" works here too
 # downstream_port = 34255                            # loopback only
 # expected_hashrate_hs = 1000000.0                   # vardiff starting hint for THIS machine (not a measurement)
 # shares_per_minute = 6.0
@@ -261,6 +272,47 @@ enabled = false
 # poll_secs = 300
 # worker_prefix = "<account>.<worker>"               # default: your pool user / user_identity
 "#;
+
+/// Placeholder for the worker part of `pool.user` / `stratum_v2.user_identity`.
+pub const WORKER_PLACEHOLDER: &str = "{worker_name}";
+
+fn valid_worker_name(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 32 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Explicit non-empty `worker_name` (must be valid as written), else the machine's host name with every character
+/// outside `[A-Za-z0-9_-]` replaced by `-`. Errors instead of inventing a name.
+pub fn resolve_worker_name(explicit: Option<&str>, host: Option<String>) -> Result<String, String> {
+    if let Some(e) = explicit.map(str::trim).filter(|e| !e.is_empty()) {
+        return if valid_worker_name(e) {
+            Ok(e.to_string())
+        } else {
+            Err("pool.worker_name may only contain letters, digits, '-' and '_' (max 32 characters)".into())
+        };
+    }
+    let h: String = host
+        .unwrap_or_default()
+        .trim()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '-' })
+        .take(32)
+        .collect();
+    let h = h.trim_matches('-').to_string();
+    if h.is_empty() {
+        Err("the worker name is empty: set pool.worker_name (this machine's host name could not be used)".into())
+    } else {
+        Ok(h)
+    }
+}
+
+/// `Some(problem)` when the worker part (after the last `.`) of an expanded `userName.workerName` is empty.
+fn empty_worker_problem(field: &str, raw: &str, expanded: &str) -> Option<String> {
+    let uses_placeholder = raw.contains(WORKER_PLACEHOLDER);
+    let after_dot_empty = expanded.rsplit_once('.').is_some_and(|(_, w)| w.trim().is_empty());
+    (after_dot_empty || (uses_placeholder && expanded.trim().is_empty())).then(|| {
+        format!("{field}: the worker part of userName.workerName is empty; set pool.worker_name or a worker name after the '.'")
+    })
+}
 
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
@@ -291,8 +343,22 @@ impl Config {
         format!("stratum+tcp://{}:{}", crate::tproxy::DOWNSTREAM_ADDRESS, self.stratum_v2.downstream_port)
     }
 
+    /// The pool user with `{worker_name}` expanded; falls back to the payout address only when `pool.user` is unset.
     pub fn pool_user(&self) -> Option<String> {
-        self.pool.user.clone().or_else(|| self.payout_address.clone())
+        self.pool.user.as_deref().map(|u| self.expand_worker(u)).or_else(|| self.payout_address.clone())
+    }
+
+    /// Replace `{worker_name}` with the resolved worker name (empty when it cannot be resolved, which `problems` reports).
+    pub fn expand_worker(&self, s: &str) -> String {
+        if !s.contains(WORKER_PLACEHOLDER) {
+            return s.to_string();
+        }
+        s.replace(WORKER_PLACEHOLDER, &self.worker_name().unwrap_or_default())
+    }
+
+    /// The worker part of the pool user: `pool.worker_name` if set, else this machine's host name.
+    pub fn worker_name(&self) -> Option<String> {
+        resolve_worker_name(self.pool.worker_name.as_deref(), sysinfo::System::host_name()).ok()
     }
 
     /// All problems with this config (empty = valid). Does not touch the network.
@@ -302,6 +368,29 @@ impl Config {
         if let Some(a) = &self.payout_address {
             if let Err(e) = safety::validate_payout_address(a) {
                 p.push(format!("payout_address: {e}"));
+            }
+        }
+        // An empty user or worker part is a placeholder the owner has not filled in: refuse to run (never guess).
+        if self.pool.user.as_deref().is_some_and(|u| u.trim().is_empty()) {
+            p.push("pool.user is empty: set it to your pool account and worker name as userName.workerName".into());
+        }
+        if self.stratum_v2.user_identity.as_deref().is_some_and(|u| u.trim().is_empty()) {
+            p.push("stratum_v2.user_identity is empty: set it to userName.workerName or remove the line to use pool.user".into());
+        }
+        if let Err(e) = resolve_worker_name(self.pool.worker_name.as_deref(), sysinfo::System::host_name()) {
+            let needed = [self.pool.user.as_deref(), self.stratum_v2.user_identity.as_deref()]
+                .iter()
+                .flatten()
+                .any(|u| u.contains(WORKER_PLACEHOLDER));
+            if needed || self.pool.worker_name.as_deref().is_some_and(|w| !w.trim().is_empty()) {
+                p.push(e);
+            }
+        }
+        for (field, raw) in [("pool.user", self.pool.user.as_deref()), ("stratum_v2.user_identity", self.stratum_v2.user_identity.as_deref())] {
+            if let Some(raw) = raw.filter(|r| !r.trim().is_empty()) {
+                if let Some(m) = empty_worker_problem(field, raw, &self.expand_worker(raw)) {
+                    p.push(m);
+                }
             }
         }
         for (field, v) in [
@@ -461,8 +550,63 @@ threads_flag = "-t"
     fn template_parses_and_reports_what_is_missing() {
         let c = Config::parse(TEMPLATE).unwrap();
         let p = c.problems(8);
-        assert!(p.iter().any(|m| m.contains("pool.url")));
-        assert!(p.iter().any(|m| m.contains("miner.path")));
+        assert!(p.iter().any(|m| m.contains("miner.path")), "{p:?}");
+        // The pool URL is pre-filled with Braiins, so it is not reported as missing.
+        assert!(!p.iter().any(|m| m.contains("pool.url")), "{p:?}");
+    }
+
+    #[test]
+    fn template_defaults_to_braiins_with_the_account_prefilled() {
+        let c = Config::parse(TEMPLATE).unwrap();
+        assert_eq!(c.pool.url.as_deref(), Some("stratum+tcp://stratum.braiins.com:3333"));
+        assert_eq!(c.stratum_v2.upstream_address.as_deref(), Some("stratum.braiins.com:3333"));
+        assert_eq!(c.stratum_v2.authority_pubkey.as_deref(), Some("9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna"));
+        assert_eq!(c.pool.user.as_deref(), Some("jhaelyngta.{worker_name}"));
+        // The worker part comes from config when set...
+        let mut c = c;
+        c.pool.worker_name = Some("rig1".into());
+        assert_eq!(c.pool_user().as_deref(), Some("jhaelyngta.rig1"));
+        assert_eq!(c.sv2_user_identity().as_deref(), Some("jhaelyngta.rig1"));
+        // ...and an invalid explicit worker name is refused, never silently rewritten.
+        c.pool.worker_name = Some("bad name!".into());
+        assert!(c.problems(8).iter().any(|m| m.contains("pool.worker_name")), "{:?}", c.problems(8));
+    }
+
+    #[test]
+    fn worker_name_comes_from_config_or_the_machine_name_and_is_never_invented() {
+        assert_eq!(resolve_worker_name(Some("rig1"), Some("host".into())).unwrap(), "rig1");
+        assert_eq!(resolve_worker_name(None, Some("my-box.local".into())).unwrap(), "my-box-local");
+        assert_eq!(resolve_worker_name(Some("  "), Some("Laptop 2".into())).unwrap(), "Laptop-2");
+        assert!(resolve_worker_name(None, None).is_err());
+        assert!(resolve_worker_name(None, Some("...".into())).is_err());
+        assert!(resolve_worker_name(Some("a b"), Some("host".into())).is_err());
+    }
+
+    #[test]
+    fn an_empty_user_or_empty_worker_part_refuses_to_run() {
+        let f = fake_miner_file();
+        let mut c = Config::parse(TEMPLATE).unwrap();
+        c.payout_address = Some(ADDR.into());
+        c.miner.path = Some(f.path().to_path_buf());
+        c.pool.worker_name = Some("rig1".into());
+        assert!(c.problems(8).is_empty(), "{:?}", c.problems(8));
+        for bad in ["", "   ", "jhaelyngta.", "jhaelyngta. "] {
+            c.pool.user = Some(bad.into());
+            let p = c.problems(8);
+            assert!(p.iter().any(|m| m.contains("pool.user")), "{bad:?}: {p:?}");
+        }
+        // An empty user must not fall back to the payout address.
+        c.pool.user = Some("".into());
+        assert_eq!(c.pool_user().as_deref(), Some(""));
+        // Same in sv2 mode, for user_identity.
+        c.pool.user = Some("jhaelyngta.{worker_name}".into());
+        c.mode = Some(PoolMode::Sv2);
+        c.stratum_v2.enabled = true;
+        c.stratum_v2.translator_path = Some(f.path().to_path_buf());
+        c.stratum_v2.user_identity = Some("jhaelyngta.".into());
+        assert!(c.problems(8).iter().any(|m| m.contains("stratum_v2.user_identity")), "{:?}", c.problems(8));
+        c.stratum_v2.user_identity = Some("   ".into());
+        assert!(c.problems(8).iter().any(|m| m.contains("stratum_v2.user_identity is empty")));
     }
 
     #[test]

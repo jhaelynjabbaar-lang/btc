@@ -129,6 +129,8 @@ Notes from the source and from testing:
 | V1 backup | `stratum+tcp://stratum.braiins.com:443` ([BTC mining setup](https://academy.braiins.com/braiins-pool/btc-mining-setup)) |
 | User ID | `userName.workerName` (your Braiins account name + a device name); password: anything or empty |
 
+The agent's generated `config.toml` defaults to these Braiins values, with the pool user pre-filled as `jhaelyngta.{worker_name}` (the owner's account name; `{worker_name}` comes from `pool.worker_name` or the machine's host name; an empty worker part is refused). See `agent/README.md`.
+
 Sources: [Stratum V2 manual](https://academy.braiins.com/braiins-pool/stratum-v2-manual),
 [BTC mining setup](https://academy.braiins.com/braiins-pool/btc-mining-setup),
 [troubleshooting FAQ](https://academy.braiins.com/braiins-os/faqs/troubleshooting) (repeats the same key).

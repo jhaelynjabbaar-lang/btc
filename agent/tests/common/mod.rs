@@ -25,7 +25,7 @@ pub const ADDR: &str = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
 pub fn config_with(miner_args: &[&str]) -> Config {
     Config {
         payout_address: Some(ADDR.into()),
-        pool: PoolConfig { url: Some("stratum+tcp://pool.example.com:3333".into()), user: None, password: Some("hunter22".into()) },
+        pool: PoolConfig { url: Some("stratum+tcp://pool.example.com:3333".into()), user: None, worker_name: None, password: Some("hunter22".into()) },
         miner: MinerConfig {
             path: Some(fake_miner_path()),
             args: miner_args.iter().map(|s| s.to_string()).collect(),

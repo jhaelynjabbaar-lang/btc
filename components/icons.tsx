@@ -45,6 +45,11 @@ const paths: Record<NavItem["icon"], React.ReactNode> = {
       <path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6" />
     </>
   ),
+  cloud: (
+    <>
+      <path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9H7Z" />
+    </>
+  ),
   database: (
     <>
       <ellipse cx="12" cy="5.5" rx="8" ry="3" />

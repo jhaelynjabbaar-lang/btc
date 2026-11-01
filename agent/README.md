@@ -83,8 +83,8 @@ miner --SV1 (127.0.0.1 only)--> translator_sv2 --SV2 + Noise--> pool
    Official instructions: <https://github.com/stratum-mining/sv2-apps/tree/main/miner-apps/translator#installation--build>.
 2. **Install a miner you trust** (e.g. cpuminer-opt) as in "The miner (bring your own)".
 3. **Get from your pool's official docs**: its Stratum V2 `host:port` and its **public authority key**, plus your account/worker name.
-   (Braiins Pool publishes both; see `docs/stratum.md` for the exact values and links, and for what is *not* verified. The agent ships no
-   pool defaults.)
+   (Braiins Pool publishes both and the generated `config.toml` is pre-filled with them; see `docs/stratum.md` for the exact values and links, and
+   for what is *not* verified. Using another pool means replacing them with that pool's own values.)
 4. **Edit `config.toml`**:
 
    ```toml
@@ -98,9 +98,9 @@ miner --SV1 (127.0.0.1 only)--> translator_sv2 --SV2 + Noise--> pool
    [stratum_v2]
    enabled = true
    translator_path = "/usr/local/bin/translator_sv2"   # default: translator_sv2 on PATH
-   upstream_address = "stratum.braiins.com:3333"        # example only: take yours from your pool's docs
+   upstream_address = "stratum.braiins.com:3333"        # pre-filled (Braiins); other pool: take yours from its docs
    authority_pubkey = "9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna"   # PUBLIC key; the Braiins key from its docs
-   user_identity = "myaccount.rig1"                     # defaults to pool.user, then payout_address
+   # user_identity = "jhaelyngta.{worker_name}"         # defaults to pool.user, then payout_address
    downstream_port = 34255                              # loopback only; must be free
    # expected_hashrate_hs = 1000000.0                   # vardiff starting hint (a CPU does far less; this is not a measurement)
    # shares_per_minute = 6.0
@@ -187,9 +187,10 @@ Edit `config.toml`:
 payout_address = "bc1q..."            # PUBLIC address only
 
 [pool]
-url = "stratum+tcp://pool.example.com:3333"   # Stratum V1; no credentials in the URL
-# user = "<address>.<worker>"        # defaults to payout_address
-password = "x"
+url = "stratum+tcp://stratum.braiins.com:3333"   # Stratum V1; no credentials in the URL. Pre-filled: Braiins Pool
+user = "jhaelyngta.{worker_name}"    # userName.workerName; {worker_name} is filled in at run time (see below)
+# worker_name = "rig1"               # letters, digits, - and _ (max 32); default: this machine's host name
+password = "x"                       # Braiins accepts anything or empty
 
 [miner]
 path = "/usr/local/bin/cpuminer"
@@ -206,6 +207,14 @@ status_line_secs = 60
 
 # mode = "sv1" is the default and is implied by the file above. For Stratum V2 see "Stratum V2 (SRI translator proxy)" below.
 ```
+
+**Default pool: Braiins Pool.** The generated template points at `stratum+tcp://stratum.braiins.com:3333` (V1) and, for `mode = "sv2"`, at
+`stratum.braiins.com:3333` with Braiins' published public authority key (both from Braiins' docs, links in [`../docs/stratum.md`](../docs/stratum.md)).
+The pool user is pre-filled as `jhaelyngta.{worker_name}`: `jhaelyngta` is the owner's Braiins account name (not a secret); `{worker_name}` becomes
+`worker_name` from `[pool]`, or this machine's host name (anything outside letters, digits, `-` and `_` becomes `-`, max 32 characters). The agent
+**refuses to run** when the worker part ends up empty (or when `pool.user` / `stratum_v2.user_identity` is empty or ends in a bare `.`), and never
+guesses a name. The agent does not create or log in to a Braiins account: you need your own account for the pool to accept work, and anyone else
+using this template must change `user` to their own account. For another pool, replace `url` and `user` (and the `[stratum_v2]` values).
 
 The top-level `mode` key chooses the pool path and is **explicit, never switched automatically**: `mode = "sv1"` (default, direct
 Stratum V1, plaintext) or `mode = "sv2"` (through the local SRI translator proxy). The V1 `[pool]` section is the fallback: to go back
