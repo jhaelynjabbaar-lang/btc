@@ -33,6 +33,12 @@ pub fn load_worker(paths: &Paths) -> Result<WorkerRecord> {
     serde_json::from_str(&text).context("worker.json is corrupt")
 }
 
+/// How the private key file is protected on this OS (shown to the user).
+#[cfg(windows)]
+pub const PRIVATE_FILE_NOTE: &str = "private: only your Windows user account can read it";
+#[cfg(not(windows))]
+pub const PRIVATE_FILE_NOTE: &str = "private, mode 0600";
+
 // ------------------------------------------------------------------- enroll
 pub struct EnrollArgs<'a> {
     pub code: &'a str,
@@ -75,8 +81,9 @@ pub fn enroll(paths: &Paths, a: EnrollArgs, out: &mut dyn Write) -> Result<Worke
     identity.save_new(&paths.identity_key())?;
     writeln!(
         out,
-        "Generated a new Ed25519 identity. The private key stays in {} (private, mode 0600) and is never sent.",
-        paths.identity_key().display()
+        "Generated a new Ed25519 identity. The private key stays in {} ({}) and is never sent.",
+        paths.identity_key().display(),
+        PRIVATE_FILE_NOTE
     )?;
     writeln!(out, "Hardware: {}", hw.summary())?;
 
@@ -283,9 +290,17 @@ pub fn run_cmd(paths: &Paths, start_paused: bool) -> Result<()> {
     let hw = hardware::detect();
     log.info(format!("hardware: {}", hw.summary()));
 
+    // Windows: make the miner / translator die with the agent even if the console window is closed or the agent is killed.
+    #[cfg(windows)]
+    if let Err(e) = crate::winplat::kill_children_with_agent() {
+        log.warn(format!("could not set up the Windows Job Object ({e:#}); the miner is still stopped on Ctrl-C / `stop`"));
+    }
+
     let stop = Arc::new(AtomicBool::new(false));
     {
         let stop = stop.clone();
+        // `ctrlc` (feature "termination") covers SIGINT/SIGTERM/SIGHUP on unix and Ctrl-C, Ctrl-Break and console close/logoff/
+        // shutdown on Windows.
         ctrlc::set_handler(move || stop.store(true, Ordering::SeqCst)).context("installing the Ctrl-C handler")?;
     }
     let api = HttpApi::new(&worker.server_url, &worker.worker_id, Arc::new(identity));

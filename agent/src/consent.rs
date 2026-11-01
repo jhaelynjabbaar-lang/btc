@@ -30,12 +30,13 @@ If you continue, then whenever you run `btc-agent run`:
     reported by the miner/pool, uptime, agent version. Hardware info (OS, CPU model, core count, memory, GPU name
     when detectable) is sent once, at enrollment. Nothing else is collected: no files, no browsing, no keystrokes.
   * It polls the server for start / pause / stop commands from the owner of this enrollment and obeys them.
-  * It signs every request with a private key kept ONLY in a 0600 file on this machine. That key is never sent.
+  * It signs every request with a private key kept ONLY in a private file on this machine (mode 0600 on Linux/macOS;
+    on Windows an access list that allows only your own user account). That key is never sent.
 
 How you stay in control:
   * It is NEVER hidden. It runs in your terminal, prints a banner and periodic status lines, and keeps a
-    plain-text log you can read. `btc-agent status` shows what it is doing. Ctrl-C stops the miner (and the translator
-    proxy, if used) and the agent.
+    plain-text log you can read. `btc-agent status` shows what it is doing. Ctrl-C (or Ctrl-Break on Windows) stops the
+    miner (and the translator proxy, if used) and the agent.
   * `btc-agent consent --revoke` withdraws consent (a running agent stops itself); `btc-agent uninstall` deletes
     the key and all local files.
 

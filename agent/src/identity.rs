@@ -1,8 +1,11 @@
-//! Local Ed25519 identity. The private key (32-byte seed) lives only in a 0600 file in the config dir.
+//! Local Ed25519 identity. The private key (32-byte seed) lives only in a private file in the config dir
+//! (mode 0600 on Linux/macOS; on Windows an ACL that grants only your own user account access).
 //! It is never logged, never printed and never sent anywhere; only the public key is shared (at enrollment).
 
 use crate::protocol::b64url;
-use anyhow::{Context, Result, bail};
+#[cfg(unix)]
+use anyhow::bail;
+use anyhow::{Context, Result};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signer, SigningKey};
@@ -39,6 +42,8 @@ impl Identity {
     }
 
     /// Create the key file with mode 0600 from the first byte (no window where it is world-readable).
+    /// On Windows the file is created inside the user-only state directory and then given an explicit user-only ACL; if
+    /// that cannot be applied the key is deleted and an error is returned (it never stays on disk unprotected).
     /// Refuses to overwrite an existing key.
     pub fn save_new(&self, path: &Path) -> Result<()> {
         let mut opts = std::fs::OpenOptions::new();
@@ -55,10 +60,16 @@ impl Identity {
             let _ = std::fs::remove_file(path);
             return Err(e).context("writing key file");
         }
+        #[cfg(windows)]
+        if let Err(e) = crate::winplat::restrict_to_current_user(path, false) {
+            let _ = std::fs::remove_file(path);
+            return Err(e).context("restricting the key file to your user account");
+        }
         Ok(())
     }
 
-    /// Load the key. On unix the file must not be readable or writable by group/other.
+    /// Load the key. On unix the file must not be readable or writable by group/other. (On Windows the ACL is set when
+    /// the key is created and is not re-verified on every load.)
     pub fn load(path: &Path) -> Result<Self> {
         #[cfg(unix)]
         {

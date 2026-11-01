@@ -20,8 +20,8 @@ estimate earnings, and it never shows earnings: *accepted shares mean only what 
   (`state`, `hashrate`, `accepted`, `rejected`, `uptime`, buffered telemetry).
 * It keeps a plain-text log (`agent.log`) and a local status file (`status.json`).
 * It refuses to run without your typed `yes` (`btc-agent consent`), and stops itself if you withdraw consent.
-* **Ctrl-C** (or SIGTERM) stops the miner and the agent cleanly. The miner is never left running as an orphan.
-* The private key is stored only in a local `0600` file. It is never logged, printed or sent; only the public key is.
+* **Ctrl-C** (or SIGTERM; Ctrl-Break and closing the window on Windows) stops the miner and the agent cleanly. The miner is never left running as an orphan.
+* The private key is stored only in a local private file (`0600` on Linux/macOS; user-only access list on Windows). It is never logged, printed or sent; only the public key is.
 * Numbers are never invented. If the miner's hashrate or share counts cannot be read, they are `unknown` locally, and a
   minute without a known hashrate is simply not reported (see [Telemetry](#telemetry)).
 * The payout address must be a **public** address; anything that looks like a private key, WIF, xprv/zprv or seed phrase
@@ -40,8 +40,15 @@ cargo clippy --all-targets -- -D warnings
 
 Copy `target/release/btc-agent` somewhere on your `PATH` (optional). It is a single binary with rustls built in.
 
-Platforms: developed and tested on Linux x86_64. macOS should work (unix code path); Windows builds the non-unix code path
-(miner is terminated with `kill` instead of SIGTERM, no 0600 mode) but is untested.
+Platforms: developed on Linux x86_64 (full test suite). macOS should work (unix code path). **Windows 10/11 x86_64 is
+supported for Stratum V1 (direct)**: see [WINDOWS.md](WINDOWS.md) for the beginner setup guide and downloads. On Windows the
+private key lives in `%LOCALAPPDATA%\BTC Network\btc-agent\config` with an access list that allows only your own user account, the
+miner (and anything it starts) is ended with `taskkill /T /F` and a Job Object so it can never outlive the agent, and Ctrl-C,
+Ctrl-Break and closing the console window all stop it. Stratum V2 (the translator proxy) has not been tried on Windows.
+
+Cross-compiling `btc-agent.exe` from Linux (no Windows needed): `rustup target add x86_64-pc-windows-gnu`, install
+[zig](https://ziglang.org) and `cargo install cargo-zigbuild`, then `cargo zigbuild --release --target x86_64-pc-windows-gnu`.
+Official release binaries are built natively on `windows-latest` by `.github/workflows/agent-release.yml`.
 
 ### The miner (bring your own)
 
@@ -51,7 +58,7 @@ is a Stratum V1 CPU miner such as [`cpuminer-opt`](https://github.com/JayDDee/cp
 
 | `miner.kind` | Parses | Notes |
 | --- | --- | --- |
-| `cpuminer` (default) | `accepted: A/T (…%), X khash/sec` lines (cpuminer, cpuminer-opt, cpuminer-multi style) | rejected = T - A; hashrate only from lines that report the total |
+| `cpuminer` (default) | cpuminer-opt (v26.x) `12 Accepted 12 S0 R0 B0, ...` share lines and the `Hash rate ... (1.21kh/s)` periodic report (ANSI colors are stripped); also the classic `accepted: A/T (…%), X khash/sec` lines of cpuminer / cpuminer-multi | rejected = rejected + stale (cpuminer-opt) or T - A (classic); hashrate only from lines that report the total |
 | `generic` | whatever you configure with `hashrate_regex`, `accepted_regex`, `rejected_regex` | no regex ⇒ that value stays `unknown`; `shares_cumulative = true` if the regex captures a running total in group 1 |
 
 Parsing is best-effort against the miner's console output and **must be checked against your actual miner's output**

@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-/// All local state lives in one directory in the OS config dir (e.g. `~/.config/btc-agent`).
-/// Override with `--home DIR` or `BTC_AGENT_HOME` (used by tests).
+/// All local state lives in one directory in the OS config dir (e.g. `~/.config/btc-agent` on Linux,
+/// `%LOCALAPPDATA%\BTC Network\btc-agent\config` on Windows: the per-machine, non-roaming profile folder, so the private key is
+/// never copied to other PCs by a roaming profile). Override with `--home DIR` or `BTC_AGENT_HOME` (used by tests).
 #[derive(Clone, Debug)]
 pub struct Paths {
     pub dir: PathBuf,
@@ -19,7 +20,11 @@ impl Paths {
         }
         let pd = directories::ProjectDirs::from("ai", "BTC Network", "btc-agent")
             .context("could not determine the OS config directory; pass --home DIR")?;
-        Ok(Paths::new(pd.config_dir()))
+        #[cfg(windows)]
+        let dir = pd.config_local_dir();
+        #[cfg(not(windows))]
+        let dir = pd.config_dir();
+        Ok(Paths::new(dir))
     }
 
     pub fn identity_key(&self) -> PathBuf {
@@ -60,7 +65,7 @@ impl Paths {
         ]
     }
 
-    /// Create the state directory (0700 on unix).
+    /// Create the state directory (0700 on unix; on Windows a newly created directory is limited to the current user).
     pub fn ensure_dir(&self) -> Result<()> {
         #[cfg(unix)]
         {
@@ -73,7 +78,17 @@ impl Paths {
         }
         #[cfg(not(unix))]
         {
-            std::fs::create_dir_all(&self.dir).with_context(|| format!("creating {}", self.dir.display()))
+            let existed = self.dir.exists();
+            std::fs::create_dir_all(&self.dir).with_context(|| format!("creating {}", self.dir.display()))?;
+            #[cfg(windows)]
+            if !existed {
+                // Files created inside inherit this, so the key is never readable by other users, even briefly.
+                crate::winplat::restrict_to_current_user(&self.dir, true)
+                    .with_context(|| format!("restricting access to {} to your user account", self.dir.display()))?;
+            }
+            #[cfg(not(windows))]
+            let _ = existed;
+            Ok(())
         }
     }
 }
