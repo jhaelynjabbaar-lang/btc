@@ -27,6 +27,37 @@ pub enum MinerEvent {
 /// `1234.5 khash/sec`, `12 kH/s`, `3.2 MH/s`, `800 H/s`
 pub const DEFAULT_HASHRATE_RE: &str = r"(?i)(?:^|[^\w.])(\d+(?:\.\d+)?)\s*([kmgtp]?)h(?:ash)?(?:es)?\s*/\s*s(?:ec)?\b";
 const CPUMINER_SHARES_RE: &str = r"(?i)\baccepted:\s*(\d+)\s*/\s*(\d+)";
+/// cpuminer-opt (JayDDee, the build shipped for Windows and Linux) share-result line, after colors are stripped:
+/// `12 Accepted 12 S0 R0 B0, 3.456 sec (45ms)` for an accepted share, `13 A12 S0 Rejected 1 B0, ...` for a rejected one and
+/// `14 A12 Stale 1 R1 B0, ...` for a stale one. The numbers are cumulative: accepted (A), stale (S), rejected (R), blocks (B).
+const CPUMINER_OPT_SHARE_RE: &str =
+    r"\b\d+\s+(?:Accepted\s+|A)(\d+)\s+(?:Stale\s+|S)(\d+)\s+(?:Rejected\s+|R)(\d+)\s+(?:BLOCK SOLVED\s+|B)\d+\b";
+/// cpuminer-opt periodic report: `Hash rate   1.23kh/s   1.20kh/s   (1.21kh/s)`. The value in parentheses is the current
+/// total of all threads; the first two are derived from share difficulty and the session average.
+const CPUMINER_OPT_HASHRATE_RE: &str = r"(?i)\bhash rate\b.*\(\s*(\d+(?:\.\d+)?)\s*([kmgtp]?)h\s*/\s*s\s*\)";
+
+/// Remove ANSI color / cursor escape sequences (`ESC [ ... letter`). cpuminer-opt prints colors by default, even when its
+/// output is a pipe (turn them off with `--no-color`); they would otherwise split the numbers the parser looks for.
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                // parameters/intermediates, then one final byte in 0x40..=0x7e
+                for n in chars.by_ref() {
+                    if ('@'..='~').contains(&n) {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
 
 fn unit_multiplier(unit: &str) -> Option<f64> {
     Some(match unit.to_ascii_lowercase().as_str() {
@@ -51,6 +82,8 @@ pub struct LineParser {
     kind: MinerKind,
     hashrate: Regex,
     shares_total: Option<Regex>,
+    opt_shares: Option<Regex>,
+    opt_hashrate: Option<Regex>,
     accepted: Option<Regex>,
     rejected: Option<Regex>,
     shares_cumulative: bool,
@@ -68,16 +101,48 @@ impl LineParser {
                 cfg.rejected_regex.as_deref().map(|p| compile("rejected_regex", p)).transpose()?,
             ),
         };
-        Ok(LineParser { kind: cfg.kind, hashrate, shares_total, accepted, rejected, shares_cumulative: cfg.shares_cumulative })
+        let (opt_shares, opt_hashrate) = match cfg.kind {
+            MinerKind::Cpuminer if cfg.hashrate_regex.is_none() => {
+                (Some(compile("cpuminer", CPUMINER_OPT_SHARE_RE)?), Some(compile("cpuminer", CPUMINER_OPT_HASHRATE_RE)?))
+            }
+            MinerKind::Cpuminer => (Some(compile("cpuminer", CPUMINER_OPT_SHARE_RE)?), None),
+            MinerKind::Generic => (None, None),
+        };
+        Ok(LineParser {
+            kind: cfg.kind,
+            hashrate,
+            shares_total,
+            opt_shares,
+            opt_hashrate,
+            accepted,
+            rejected,
+            shares_cumulative: cfg.shares_cumulative,
+        })
     }
 
     /// True when this parser can ever produce share counts (otherwise they stay "unknown").
     pub fn reads_shares(&self) -> bool {
-        self.shares_total.is_some() || self.accepted.is_some() || self.rejected.is_some()
+        self.shares_total.is_some() || self.opt_shares.is_some() || self.accepted.is_some() || self.rejected.is_some()
     }
 
     pub fn parse(&self, line: &str) -> Vec<MinerEvent> {
+        let stripped = strip_ansi(line);
+        let line = stripped.as_str();
         let mut out = Vec::new();
+
+        // cpuminer-opt: cumulative counters on every share-result line. Pool-rejected = rejected + stale.
+        if let Some(c) = self.opt_shares.as_ref().and_then(|re| re.captures(line)) {
+            if let (Ok(acc), Ok(stale), Ok(rej)) = (c[1].parse::<u64>(), c[2].parse::<u64>(), c[3].parse::<u64>()) {
+                out.push(MinerEvent::SharesTotal { accepted: acc, rejected: stale.saturating_add(rej) });
+            }
+        }
+        // cpuminer-opt periodic report: take the live total in parentheses.
+        if let Some(c) = self.opt_hashrate.as_ref().and_then(|re| re.captures(line)) {
+            if let Some(hs) = to_hashrate(&c[1], c.get(2).map_or("", |m| m.as_str())) {
+                out.push(MinerEvent::Hashrate(hs));
+                return out;
+            }
+        }
 
         if let Some(c) = self.shares_total.as_ref().and_then(|re| re.captures(line)) {
             // cpuminer prints `accepted: <accepted>/<submitted>`; rejected = submitted - accepted.
@@ -150,6 +215,64 @@ mod tests {
         for l in ["", "Stratum difficulty set to 1024", "accepted: x/y", "total: NaN kH/s", "total 1e999 H/s"] {
             assert!(p.parse(l).is_empty(), "{l}");
         }
+    }
+
+    // ---- cpuminer-opt (JayDDee), the miner shipped for Windows: formats taken from its cpu-miner.c share_result() and
+    // ---- report_summary_log() (v26.1).
+    #[test]
+    fn cpuminer_opt_share_result_lines_give_cumulative_counts() {
+        let p = cpuminer();
+        assert_eq!(
+            p.parse("[2026-11-01 10:00:00] 12 Accepted 12 S0 R0 B0, 3.456 sec (45ms)"),
+            vec![MinerEvent::SharesTotal { accepted: 12, rejected: 0 }]
+        );
+        assert_eq!(
+            p.parse("[2026-11-01 10:00:09] 13 A12 S0 Rejected 1 B0, 2.100 sec (51ms)"),
+            vec![MinerEvent::SharesTotal { accepted: 12, rejected: 1 }]
+        );
+        assert_eq!(
+            p.parse("[2026-11-01 10:00:19] 14 A12 Stale 1 R1 B0, 9.900 sec (60ms)"),
+            vec![MinerEvent::SharesTotal { accepted: 12, rejected: 2 }],
+            "stale shares are shares the pool did not accept"
+        );
+        assert_eq!(
+            p.parse("[2026-11-01 10:00:29] 15 A13 S1 R1 BLOCK SOLVED 1, 9.900 sec (60ms)"),
+            vec![MinerEvent::SharesTotal { accepted: 13, rejected: 2 }]
+        );
+    }
+
+    #[test]
+    fn cpuminer_opt_colored_output_is_parsed_like_plain_output() {
+        // cpuminer-opt colors by default, even into a pipe; this is the exact layout of its share_result() format string.
+        let colored = "[2026-11-01 10:00:00]\u{1b}[01;37m 12 \u{1b}[01;32mAccepted 12 \u{1b}[0mS0 \u{1b}[0mR0 \u{1b}[0mB0\u{1b}[0m, 3.456 sec (45ms)\u{1b}[0m";
+        assert_eq!(cpuminer().parse(colored), vec![MinerEvent::SharesTotal { accepted: 12, rejected: 0 }]);
+        assert_eq!(strip_ansi("a\u{1b}[01;32mb\u{1b}[0mc"), "abc");
+        assert_eq!(strip_ansi("no escapes, 100% [ok]"), "no escapes, 100% [ok]");
+        assert_eq!(strip_ansi("trailing \u{1b}"), "trailing ");
+    }
+
+    #[test]
+    fn cpuminer_opt_periodic_report_gives_the_live_total_hashrate() {
+        let p = cpuminer();
+        // columns: share-derived, session average, (live total of all threads)
+        assert_eq!(
+            p.parse("                     Hash rate         1.23kh/s     1.20kh/s   (1.21kh/s)"),
+            vec![MinerEvent::Hashrate(1210.0)]
+        );
+        assert_eq!(p.parse("Hash rate       812.00h/s   790.50h/s   (801.00h/s)"), vec![MinerEvent::Hashrate(801.0)]);
+        assert_eq!(p.parse("Hash rate        2.50Mh/s    2.40Mh/s   (2.45Mh/s)"), vec![MinerEvent::Hashrate(2_450_000.0)]);
+        // other lines of the report carry no rate and must not produce events
+        for l in [
+            "Periodic Report     0:05:00        0:30:00",
+            "Share rate        6.00/min     5.80/min",
+            "Submitted            30           180",
+            "Accepted             30           178       98.9%",
+            "Thread 0, CPU 0: 1.20 kh/s",
+        ] {
+            assert!(p.parse(l).is_empty(), "{l}");
+        }
+        // benchmark-style total line still works
+        assert_eq!(p.parse("[2026-11-01 10:00:00] Total: 5.34 kH/s"), vec![MinerEvent::Hashrate(5340.0)]);
     }
 
     #[test]

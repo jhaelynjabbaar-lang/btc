@@ -41,6 +41,10 @@ url = "2"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", default-features = false, features = ["signal", "process"] }
 
+# Windows only: Job Object (child processes die with the agent), process liveness check. No effect on Linux builds.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
 [dev-dependencies]
 tempfile = "3"
 

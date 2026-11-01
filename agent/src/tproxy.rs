@@ -82,7 +82,14 @@ pub fn validate_user_identity(s: &str) -> Result<(), String> {
 /// The first executable called `name` on `PATH`.
 pub fn find_in_path(name: &str) -> Option<PathBuf> {
     let paths = std::env::var_os("PATH")?;
-    std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| is_executable_file(p))
+    std::env::split_paths(&paths)
+        .flat_map(|d| {
+            let plain = d.join(name);
+            // Windows programs carry an `.exe` suffix that people leave off.
+            let exe = if cfg!(windows) && Path::new(name).extension().is_none() { Some(d.join(format!("{name}.exe"))) } else { None };
+            std::iter::once(plain).chain(exe)
+        })
+        .find(|p| is_executable_file(p))
 }
 
 pub fn is_executable_file(p: &Path) -> bool {

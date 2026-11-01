@@ -59,7 +59,11 @@ pub fn pid_alive(pid: u32) -> bool {
             Err(_) => false,
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        crate::winplat::pid_alive(pid)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = pid;
         true

@@ -2,6 +2,7 @@
 
 use serde_json::{Map, Value, json};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 use sysinfo::System;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -45,20 +46,79 @@ pub fn detect() -> HardwareInfo {
     }
 }
 
-/// Only NVIDIA via `nvidia-smi` (present when the driver is installed). Anything else: not detected, reported as absent.
+/// GPU name when it is easy to find. Order: NVIDIA via `nvidia-smi` (on `PATH`, then the Windows driver's standard
+/// location), then on Windows the display adapter name from the system (`Win32_VideoController`). Anything else: not
+/// detected, reported as absent. Every probe has a short timeout so enrollment can never hang on it.
 fn detect_nvidia_gpu() -> Option<String> {
-    let out = Command::new("nvidia-smi")
-        .args(["--query-gpu=name", "--format=csv,noheader"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut candidates: Vec<std::path::PathBuf> = vec!["nvidia-smi".into()];
+    #[cfg(windows)]
+    {
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            candidates.push(std::path::Path::new(&root).join("System32").join("nvidia-smi.exe"));
+        }
+        if let Some(pf) = std::env::var_os("ProgramFiles") {
+            candidates.push(std::path::Path::new(&pf).join("NVIDIA Corporation").join("NVSMI").join("nvidia-smi.exe"));
+        }
     }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let first = text.lines().next()?;
-    sanitize(first, 128)
+    for c in candidates {
+        let mut cmd = Command::new(&c);
+        cmd.args(["--query-gpu=name", "--format=csv,noheader"]);
+        if let Some(text) = run_with_timeout(cmd, Duration::from_secs(8)) {
+            if let Some(g) = text.lines().next().and_then(|l| sanitize(l, 128)) {
+                return Some(g);
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        detect_windows_adapter()
+    }
+    #[cfg(not(windows))]
+    None
+}
+
+/// Windows fallback for non-NVIDIA (or driver-less) machines: the first display adapter's name, via the built-in
+/// Windows PowerShell. Read-only query; no output other than the adapter name is kept.
+#[cfg(windows)]
+fn detect_windows_adapter() -> Option<String> {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+    let ps = std::path::Path::new(&root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    let mut cmd = Command::new(ps);
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "(Get-CimInstance Win32_VideoController | Select-Object -First 1 -ExpandProperty Name)",
+    ]);
+    let text = run_with_timeout(cmd, Duration::from_secs(10))?;
+    text.lines().next().and_then(|l| sanitize(l, 128))
+}
+
+/// Run a command with stdin closed, return its stdout when it exits successfully within `limit`.
+fn run_with_timeout(mut cmd: Command, limit: Duration) -> Option<String> {
+    use std::io::Read;
+    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(25)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    let bytes = reader.join().ok()?;
+    status.success().then(|| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 impl HardwareInfo {

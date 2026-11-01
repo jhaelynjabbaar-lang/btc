@@ -23,6 +23,8 @@ pub mod supervisor;
 pub mod telemetry;
 pub mod timeutil;
 pub mod tproxy;
+#[cfg(windows)]
+pub mod winplat;
 
 /// Version string reported to the server (`software_version`, max 32 chars).
 pub const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
