@@ -17,12 +17,18 @@ export type Database = {
       ai_recommendations: {
         Row: {
           created_at: string
+          dedupe_key: string | null
           decided_at: string | null
           decided_by: string | null
           explanation: string
           id: string
           inputs: Json
           kind: string
+          job: string | null
+          run_id: string | null
+          severity: string
+          suggested_action: Json
+          title: string | null
           model: string | null
           owner_id: string
           status: string
@@ -31,12 +37,18 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dedupe_key?: string | null
           decided_at?: string | null
           decided_by?: string | null
           explanation: string
           id?: string
           inputs?: Json
           kind?: string
+          job?: string | null
+          run_id?: string | null
+          severity?: string
+          suggested_action?: Json
+          title?: string | null
           model?: string | null
           owner_id: string
           status?: string
@@ -45,12 +57,18 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dedupe_key?: string | null
           decided_at?: string | null
           decided_by?: string | null
           explanation?: string
           id?: string
           inputs?: Json
           kind?: string
+          job?: string | null
+          run_id?: string | null
+          severity?: string
+          suggested_action?: Json
+          title?: string | null
           model?: string | null
           owner_id?: string
           status?: string
@@ -750,6 +768,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ai_decide_recommendation: {
+        Args: { p_actor: string; p_confirm: boolean; p_decision: string; p_id: string; p_owner: string }
+        Returns: Json
+      }
+      ai_worker_aggregates: {
+        Args: { p_baseline_days: number; p_now: string; p_recent_minutes: number }
+        Returns: Json
+      }
       ack_worker_commands: {
         Args: { p_ids: string[]; p_worker_id: string }
         Returns: Json

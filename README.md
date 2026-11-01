@@ -44,3 +44,7 @@ bitcoincore.org advisories + RSS and bitcoin/bitcoin releases into Postgres idem
 items first seen later are flagged new. Admins can also press "Run ingest now" on `/monitoring`.
 
 Optional: `NVD_API_KEY`, `GITHUB_TOKEN` raise upstream rate limits.
+
+## AI analysis (Phase 7)
+
+`/ai` (admin only) shows recommendations from NVIDIA Nemotron over your own DB facts. It can only recommend; accepting needs a confirm and writes `audit_log`. See [docs/ai.md](docs/ai.md).
