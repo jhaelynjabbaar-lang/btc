@@ -291,7 +291,9 @@ function FindLocalFirefox {
   return $null
 }
 function RunAction($id, $fromServer) {
-  $a = $Actions[$id]
+  if ($id -eq $null -or ([string]$id).Trim().Length -eq 0) { Say 'No action id was given, so nothing was run.' 'Gray'; return 'skipped' }
+  $id = ([string]$id).Trim(); $a = $null
+  if ($Actions.ContainsKey($id)) { $a = $Actions[$id] }
   if (-not $a) { Say ('Refusing: "' + (Clean $id 30) + '" is not on the fixed list of actions.') 'Red'; return 'skipped' }
   ShowAction $a
   if ($a.admin -and -not $script:IsAdmin) { Say 'This needs Administrator. Close this window, then right-click repair.bat and choose Run as administrator.' 'Yellow'; [void]$Results.Add(@{ action_id = $id; outcome = 'skipped'; exit_code = $null }); return 'skipped' }
@@ -384,8 +386,8 @@ function Summary {
 }
 function LocalSuggestions {
   $sug = New-Object System.Collections.ArrayList
-  foreach ($id in $ActionIds) { $a = $Actions[$id]; if ($id -eq 'install_firefox') { continue }; foreach ($r in $a.related) { $s = $StatusMap[$r]; if ($s -eq 'warn' -or $s -eq 'fail') { [void]$sug.Add($id); break } } }
-  return @($sug.ToArray())
+  foreach ($id in $ActionIds) { if ($id -eq $null -or -not $Actions.ContainsKey([string]$id)) { continue }; $a = $Actions[$id]; if ($id -eq 'install_firefox') { continue }; foreach ($r in $a.related) { $s = $StatusMap[$r]; if ($s -eq 'warn' -or $s -eq 'fail') { [void]$sug.Add($id); break } } }
+  return @($sug.ToArray() | Where-Object { $_ -ne $null -and ([string]$_).Trim().Length -gt 0 })
 }
 function Menu {
   while ($true) {
@@ -394,7 +396,7 @@ function Menu {
     Say '4) Send report to server  5) Copy compact report to clipboard (for the website)  6) Re-run checks   0) Exit' 'White'
     $c = Read-Host 'Choose'
     if ($c -eq '0') { return }
-    elseif ($c -eq '1') { $s = @(LocalSuggestions); if ($s.Count -eq 0) { Say 'Nothing to fix based on the checks.' 'Green' } else { foreach ($id in $s) { Say ('Suggested: ' + $id + ' - ' + $Actions[$id].title) 'Yellow' }; if (Ask 'Go through them one by one (each asks Y/N)?') { foreach ($id in $s) { [void](RunAction $id $false) } } } }
+    elseif ($c -eq '1') { $s = @(LocalSuggestions | Where-Object { $_ -ne $null -and ([string]$_).Trim().Length -gt 0 }); if ($s.Count -eq 0) { Say 'Nothing to fix based on the checks.' 'Green' } else { foreach ($sid1 in $s) { if ($sid1 -eq $null -or -not $Actions.ContainsKey([string]$sid1)) { continue }; Say ('Suggested: ' + $sid1 + ' - ' + $Actions[[string]$sid1].title) 'Yellow' }; if (Ask 'Go through them one by one (each asks Y/N)?') { foreach ($sid2 in $s) { if ($sid2 -eq $null -or ([string]$sid2).Trim().Length -eq 0) { continue }; [void](RunAction ([string]$sid2) $false) } } } }
     elseif ($c -eq '2') { $o = RunAction 'download_firefox' $false; if ($o -eq 'ran_ok') { [void](RunAction 'install_firefox' $false) } }
     elseif ($c -eq '3') { Say ('Ids: ' + ($ActionIds -join ', ')) 'Gray'; $id = (Read-Host 'Action id').Trim(); [void](RunAction $id $false) }
     elseif ($c -eq '4') { SendToServer }
