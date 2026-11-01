@@ -48,3 +48,7 @@ Optional: `NVD_API_KEY`, `GITHUB_TOKEN` raise upstream rate limits.
 ## AI analysis (Phase 7)
 
 `/ai` (admin only) shows recommendations from NVIDIA Nemotron over your own DB facts. It can only recommend; accepting needs a confirm and writes `audit_log`. See [docs/ai.md](docs/ai.md).
+
+## Windows 7 repair helper
+
+A visible, ask-first repair script for an old Windows 7 PC plus the `/repair` admin page. The server only suggests allowlisted action ids; the person at the PC approves each command with Y/N. See [docs/win7-repair.md](docs/win7-repair.md) for the typed bootstrap, TLS limits (Win7 cannot open `*.vercel.app` itself, so Firefox ESR 115 is step one), the optional Cloudflare relay in `cloudflare/repair-relay`, and what is not verified.

@@ -1,0 +1,9 @@
+{
+  "name": "btc-repair-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker: fixed-allowlist relay so a Windows 7 PC (old TLS stack) can reach the repair API.",
+  "scripts": { "deploy": "wrangler deploy" },
+  "devDependencies": { "wrangler": "4.86.0" }
+}
