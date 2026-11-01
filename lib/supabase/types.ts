@@ -100,8 +100,39 @@ export type Database = {
         }
         Relationships: []
       }
+      cloud_controls: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          kill_switch_engaged: boolean
+          owner_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          kill_switch_engaged?: boolean
+          owner_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          kill_switch_engaged?: boolean
+          owner_id?: string
+        }
+        Relationships: []
+      }
       cloud_providers: {
         Row: {
+          adapter: string
+          conditions_acknowledged_at: string | null
+          last_verified_on: string | null
+          mining_policy: string
+          notes: string | null
+          policy_quote: string | null
+          policy_url: string | null
+          pricing_url: string | null
+          slug: string | null
+          written_permission_ref: string | null
           created_at: string
           id: string
           mining_allowed_quote: string | null
@@ -111,6 +142,16 @@ export type Database = {
           verified_at: string | null
         }
         Insert: {
+          adapter?: string
+          conditions_acknowledged_at?: string | null
+          last_verified_on?: string | null
+          mining_policy?: string
+          notes?: string | null
+          policy_quote?: string | null
+          policy_url?: string | null
+          pricing_url?: string | null
+          slug?: string | null
+          written_permission_ref?: string | null
           created_at?: string
           id?: string
           mining_allowed_quote?: string | null
@@ -120,6 +161,16 @@ export type Database = {
           verified_at?: string | null
         }
         Update: {
+          adapter?: string
+          conditions_acknowledged_at?: string | null
+          last_verified_on?: string | null
+          mining_policy?: string
+          notes?: string | null
+          policy_quote?: string | null
+          policy_url?: string | null
+          pricing_url?: string | null
+          slug?: string | null
+          written_permission_ref?: string | null
           created_at?: string
           id?: string
           mining_allowed_quote?: string | null
@@ -132,6 +183,17 @@ export type Database = {
       }
       cloud_resources: {
         Row: {
+          adapter: string
+          cost_known: boolean
+          decided_at: string | null
+          decided_by: string | null
+          label: string | null
+          price_note: string | null
+          price_source_url: string | null
+          request_kind: string
+          requested_by: string | null
+          state: string
+          state_changed_at: string
           authorization_status: string
           authorized_at: string | null
           capacity: Json
@@ -146,6 +208,17 @@ export type Database = {
           worker_id: string | null
         }
         Insert: {
+          adapter?: string
+          cost_known?: boolean
+          decided_at?: string | null
+          decided_by?: string | null
+          label?: string | null
+          price_note?: string | null
+          price_source_url?: string | null
+          request_kind?: string
+          requested_by?: string | null
+          state?: string
+          state_changed_at?: string
           authorization_status?: string
           authorized_at?: string | null
           capacity?: Json
@@ -160,6 +233,17 @@ export type Database = {
           worker_id?: string | null
         }
         Update: {
+          adapter?: string
+          cost_known?: boolean
+          decided_at?: string | null
+          decided_by?: string | null
+          label?: string | null
+          price_note?: string | null
+          price_source_url?: string | null
+          request_kind?: string
+          requested_by?: string | null
+          state?: string
+          state_changed_at?: string
           authorization_status?: string
           authorized_at?: string | null
           capacity?: Json
@@ -672,6 +756,38 @@ export type Database = {
       }
       claim_worker_commands: {
         Args: { p_limit: number; p_worker_id: string }
+        Returns: Json
+      }
+      cloud_request_resource: {
+        Args: {
+          p_actor: string
+          p_capacity: Json
+          p_cost_known: boolean
+          p_hourly: number | null
+          p_instance_id: string | null
+          p_label: string | null
+          p_owner: string
+          p_price_note: string | null
+          p_price_source_url: string | null
+          p_provider: string
+          p_request_kind: string
+        }
+        Returns: Json
+      }
+      cloud_set_kill_switch: {
+        Args: { p_actor: string; p_engage: boolean; p_owner: string }
+        Returns: Json
+      }
+      cloud_set_provider_attestation: {
+        Args: { p_acknowledge: boolean; p_actor: string; p_permission_ref: string | null; p_provider: string }
+        Returns: Json
+      }
+      cloud_set_spend_limit: {
+        Args: { p_actor: string; p_limit: number; p_owner: string; p_period: string; p_provider: string | null; p_scope: string }
+        Returns: Json
+      }
+      cloud_transition: {
+        Args: { p_actor: string; p_event: string; p_id: string; p_note: string | null }
         Returns: Json
       }
       enroll_worker: {
