@@ -10,6 +10,7 @@ import type { FetchLike } from "./network";
 
 export const BRAIINS_ORIGIN = "https://pool.braiins.com";
 export const BRAIINS_PROFILE_URL = `${BRAIINS_ORIGIN}/accounts/profile/json/btc/`;
+export const BRAIINS_WORKERS_URL = `${BRAIINS_ORIGIN}/accounts/workers/json/btc`;
 export const braiinsPayoutsUrl = (from: string, to: string) => `${BRAIINS_ORIGIN}/accounts/payouts/json/btc?from=${from}&to=${to}`;
 
 export const braiinsToken = (env: Record<string, string | undefined> = process.env): string | null => {
@@ -156,4 +157,51 @@ export function payoutsToLedgerRows(payouts: readonly PoolPayout[]): { rows: Led
       });
   }
   return { rows, skipped };
+}
+
+// ------------------------------------------------------------------------------------------------ per-worker stats (Phase 9)
+// Documented "Worker API": GET /accounts/workers/json/btc -> { btc: { workers: { "<user>.<worker>": { state, last_share, ... } } } }.
+const WorkerItem = z.object({
+  state: z.string(),
+  last_share: z.number().int().nonnegative().nullable().optional(),
+  hash_rate_unit: z.string().optional(),
+  hash_rate_5m: decimal.optional(),
+  hash_rate_60m: decimal.optional(),
+  shares_5m: z.number().nonnegative().optional(),
+  shares_60m: z.number().nonnegative().optional(),
+  shares_24h: z.number().nonnegative().optional(),
+});
+const WorkersResp = z.object({ btc: z.object({ workers: z.record(z.string(), WorkerItem) }) });
+
+export type PoolWorker = {
+  label: "Pool-reported";
+  /** Full pool worker name, e.g. "jhaelyngta.rig1". */
+  name: string;
+  state: string;
+  /** Unix seconds of the last accepted share the pool recorded, or null if the pool gave none. */
+  lastShareTs: number | null;
+  hashRateUnit: string | null;
+  hashRate5m: number | null;
+  shares5m: number | null;
+  shares60m: number | null;
+  shares24h: number | null;
+};
+
+export async function fetchPoolWorkers(fetchImpl: FetchLike, token: string, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<BraiinsResult<PoolWorker[]>> {
+  const r = await get(fetchImpl, BRAIINS_WORKERS_URL, token, WorkersResp, timeoutMs);
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    data: Object.entries(r.data.btc.workers).map(([name, w]) => ({
+      label: "Pool-reported" as const,
+      name,
+      state: w.state,
+      lastShareTs: w.last_share ?? null,
+      hashRateUnit: w.hash_rate_unit ?? null,
+      hashRate5m: w.hash_rate_5m ?? null,
+      shares5m: w.shares_5m ?? null,
+      shares60m: w.shares_60m ?? null,
+      shares24h: w.shares_24h ?? null,
+    })),
+  };
 }
