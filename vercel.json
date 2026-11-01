@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/ai-analysis",
       "schedule": "47 6 * * *"
+    },
+    {
+      "path": "/api/cron/paper-trade",
+      "schedule": "5 * * * *"
     }
   ]
 }
