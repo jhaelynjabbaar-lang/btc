@@ -56,3 +56,7 @@ Optional: `NVD_API_KEY`, `GITHUB_TOKEN` raise upstream rate limits.
 ## Windows 7 repair helper
 
 A visible, ask-first repair script for an old Windows 7 PC plus the `/repair` admin page. The server only suggests allowlisted action ids; the person at the PC approves each command with Y/N. See [docs/win7-repair.md](docs/win7-repair.md) for the typed bootstrap, TLS limits (Win7 cannot open `*.vercel.app` itself, so Firefox ESR 115 is step one), the optional Cloudflare relay in `cloudflare/repair-relay`, and what is not verified.
+
+## Windows 7 speed-up
+
+A separate offline, ask-first speed-up tool for the same old PC, served at `/s` (`speedup.bat`, source `agent/win7-speedup/speedup.bat`). It scans read-only first, shows each change and waits for a local Y/N, saves an undo file, and never touches security software. See [docs/win7-speedup.md](docs/win7-speedup.md).

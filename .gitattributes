@@ -1,0 +1,2 @@
+# Keep the Windows 7 launcher byte-for-byte (CRLF) so its served bytes and hash match the file in the repo.
+agent/win7-speedup/speedup.bat -text
