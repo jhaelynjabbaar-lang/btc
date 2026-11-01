@@ -14,6 +14,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/monitoring", label: "Monitoring", description: "Release and advisory monitoring", icon: "monitor" },
   { href: "/workers", label: "Workers", description: "Agent fleet and enrollment", icon: "workers" },
   { href: "/repair", label: "PC Repair", description: "Windows 7 repair helper: pairing, reports, suggestions", icon: "workers" },
+  { href: "/verification", label: "Verification", description: "Pool-verified workers vs agent-reported shares (admin)", icon: "monitor" },
   { href: "/cloud", label: "Cloud", description: "Providers, approvals and spend limits", icon: "cloud" },
   { href: "/financials", label: "Financials", description: "Estimated vs confirmed profitability (admin)", icon: "financials" },
   { href: "/ai", label: "AI Control", description: "Recommendations from NVIDIA Nemotron (admin approves)", icon: "ai" },
