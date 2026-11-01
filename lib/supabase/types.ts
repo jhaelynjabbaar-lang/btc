@@ -14,6 +14,90 @@ export type Database = {
   }
   public: {
     Tables: {
+      network_snapshots: {
+        Row: {
+          avg_fee_sats: number | null
+          block_height: number | null
+          btc_price_usd: number | null
+          difficulty: number | null
+          fee_window_blocks: number | null
+          fetched_at: string
+          field_errors: Json
+          id: string
+          network_hashrate_hs: number | null
+          price_source: string | null
+          price_time: string | null
+          raw: Json
+          source: string
+          subsidy_sats: number | null
+          trigger: string
+        }
+        Insert: {
+          avg_fee_sats?: number | null
+          block_height?: number | null
+          btc_price_usd?: number | null
+          difficulty?: number | null
+          fee_window_blocks?: number | null
+          fetched_at?: string
+          field_errors?: Json
+          id?: string
+          network_hashrate_hs?: number | null
+          price_source?: string | null
+          price_time?: string | null
+          raw?: Json
+          source: string
+          subsidy_sats?: number | null
+          trigger?: string
+        }
+        Update: {
+          avg_fee_sats?: number | null
+          block_height?: number | null
+          btc_price_usd?: number | null
+          difficulty?: number | null
+          fee_window_blocks?: number | null
+          fetched_at?: string
+          field_errors?: Json
+          id?: string
+          network_hashrate_hs?: number | null
+          price_source?: string | null
+          price_time?: string | null
+          raw?: Json
+          source?: string
+          subsidy_sats?: number | null
+          trigger?: string
+        }
+        Relationships: []
+      }
+      profit_settings: {
+        Row: {
+          default_watts_per_worker: number | null
+          electricity_usd_per_kwh: number | null
+          owner_id: string
+          pool_fee_pct_override: number | null
+          updated_at: string
+          updated_by: string | null
+          worker_watts: Json
+        }
+        Insert: {
+          default_watts_per_worker?: number | null
+          electricity_usd_per_kwh?: number | null
+          owner_id: string
+          pool_fee_pct_override?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          worker_watts?: Json
+        }
+        Update: {
+          default_watts_per_worker?: number | null
+          electricity_usd_per_kwh?: number | null
+          owner_id?: string
+          pool_fee_pct_override?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          worker_watts?: Json
+        }
+        Relationships: []
+      }
       ai_recommendations: {
         Row: {
           created_at: string
@@ -768,6 +852,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      profit_save_settings: {
+        Args: { p_actor: string; p_default_watts: number; p_fee_override: number; p_kwh: number; p_owner: string; p_worker_watts: Json }
+        Returns: Json
+      }
+      profit_worker_hashrate: {
+        Args: { p_hours: number; p_now: string }
+        Returns: Json
+      }
       ai_decide_recommendation: {
         Args: { p_actor: string; p_confirm: boolean; p_decision: string; p_id: string; p_owner: string }
         Returns: Json

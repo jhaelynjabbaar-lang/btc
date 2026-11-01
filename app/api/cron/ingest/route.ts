@@ -2,6 +2,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db/client";
 import { runIngest } from "@/lib/monitor/ingest";
+import { refreshSnapshot } from "@/lib/profit/service";
+import { supabaseConfigured } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -28,16 +30,25 @@ export async function GET(request: Request) {
   if (!token || !safeEqual(token, secret)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
   }
+  // Phase 8: refresh the public network data cache (4 small keyless GETs). Best effort and independent of the Neon ingest below.
+  let networkSnapshot: "stored" | "unavailable" | "skipped" | "failed" = "skipped";
+  if (supabaseConfigured()) {
+    try {
+      networkSnapshot = (await refreshSnapshot("cron")).ok ? "stored" : "unavailable";
+    } catch {
+      networkSnapshot = "failed";
+    }
+  }
   const db = getDb();
   if (!db) {
     return NextResponse.json(
-      { error: "database_not_configured", message: "Database not configured (awaiting Neon). Nothing was ingested." },
+      { error: "database_not_configured", message: "Database not configured (awaiting Neon). Nothing was ingested.", network_snapshot: networkSnapshot },
       { status: 503, headers: NO_STORE },
     );
   }
   try {
     const summary = await runIngest(db, "cron");
-    return NextResponse.json({ ok: true, ...summary }, { headers: NO_STORE });
+    return NextResponse.json({ ok: true, ...summary, network_snapshot: networkSnapshot }, { headers: NO_STORE });
   } catch {
     return NextResponse.json({ error: "ingest_failed", message: "Ingest failed; see source statuses on /monitoring." }, { status: 500, headers: NO_STORE });
   }

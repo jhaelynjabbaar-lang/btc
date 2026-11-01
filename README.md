@@ -48,3 +48,7 @@ Optional: `NVD_API_KEY`, `GITHUB_TOKEN` raise upstream rate limits.
 ## AI analysis (Phase 7)
 
 `/ai` (admin only) shows recommendations from NVIDIA Nemotron over your own DB facts. It can only recommend; accepting needs a confirm and writes `audit_log`. See [docs/ai.md](docs/ai.md).
+
+## Financials (Phase 8)
+
+`/financials` (admin only) shows public network data (mempool.space, with source and time), labeled **Estimate** profitability from *measured* telemetry hashrate, and **Confirmed** earnings from ledger rows with a pool/chain source and reference. Estimated and confirmed figures are never combined, missing inputs mean "unknown" (never zero), and a tiny or negative result is shown as is. CPU/GPU mining yields essentially nothing; see [docs/profitability.md](docs/profitability.md) for the formula, sources and the optional `BRAIINS_POOL_TOKEN` connection (set by you in Vercel; never created by this repo).
