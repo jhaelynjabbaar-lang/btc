@@ -6,14 +6,18 @@ use btc_agent::telemetry::Row;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-/// `target/<profile>/examples/fake_miner` (cargo builds examples for `cargo test`).
-pub fn fake_miner_path() -> PathBuf {
+/// `target/<profile>/examples/<name>` (cargo builds examples for `cargo test`).
+pub fn example_path(base: &str) -> PathBuf {
     let exe = std::env::current_exe().unwrap();
     let profile_dir = exe.parent().unwrap().parent().unwrap(); // .../target/debug
-    let name = if cfg!(windows) { "fake_miner.exe" } else { "fake_miner" };
+    let name = if cfg!(windows) { format!("{base}.exe") } else { base.to_string() };
     let p = profile_dir.join("examples").join(name);
-    assert!(p.exists(), "fake miner not built at {}; run `cargo test` (builds examples)", p.display());
+    assert!(p.exists(), "example {base} not built at {}; run `cargo test` (builds examples)", p.display());
     p
+}
+
+pub fn fake_miner_path() -> PathBuf {
+    example_path("fake_miner")
 }
 
 pub const ADDR: &str = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";

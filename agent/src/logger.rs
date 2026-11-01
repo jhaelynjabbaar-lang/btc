@@ -71,6 +71,11 @@ impl Logger {
         self.write("MINER", line, false);
     }
 
+    /// Output line from the Stratum V2 translator proxy (log file only, like `miner`).
+    pub fn translator(&self, line: &str) {
+        self.write("TPROXY", line, false);
+    }
+
     /// A multi-line banner, printed and logged line by line.
     pub fn banner(&self, lines: &[String]) {
         let width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0).max(40) + 4;

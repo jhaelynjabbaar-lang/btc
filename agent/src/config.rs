@@ -84,14 +84,99 @@ impl Default for TimingConfig {
     }
 }
 
-/// Placeholders for Phase 5 (Stratum V2 / SRI translator). Nothing here is used yet.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+/// How the miner reaches the pool.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PoolMode {
+    /// Direct Stratum V1: `pool.url` is passed to the miner. Plaintext, no pool authentication.
+    #[default]
+    Sv1,
+    /// Stratum V2 through a local SRI Translator Proxy that the agent runs as a second visible child process.
+    Sv2,
+}
+
+impl PoolMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            PoolMode::Sv1 => "sv1",
+            PoolMode::Sv2 => "sv2",
+        }
+    }
+}
+
+/// `[stratum_v2]`: the local SRI Translator Proxy (`translator_sv2`). Used only when `mode = "sv2"`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StratumV2Config {
-    /// Must stay `false` in Phase 4.
+    /// Must be `true` for `mode = "sv2"` (and `false` for `mode = "sv1"`).
     pub enabled: bool,
+    /// Path to the `translator_sv2` binary. Default: `translator_sv2` found on `PATH`.
+    pub translator_path: Option<PathBuf>,
+    /// The pool's Stratum V2 endpoint as `host:port` (from the pool's own documentation).
+    pub upstream_address: Option<String>,
+    /// The pool's PUBLIC authority key (base58check), from the pool's own documentation. Never a secret key.
+    #[serde(alias = "authority_public_key")]
+    pub authority_pubkey: Option<String>,
+    /// Pool user / worker name sent upstream (e.g. `<account>.<worker>`). Defaults to `pool.user`, then `payout_address`.
+    pub user_identity: Option<String>,
+    /// Loopback port the translator listens on for the miner (the miner is pointed at `stratum+tcp://127.0.0.1:<port>`).
+    pub downstream_port: u16,
+    /// Starting hint for the translator's variable difficulty, in H/s of this machine (NOT a measurement).
+    pub expected_hashrate_hs: f64,
+    /// Target share rate the translator asks the miner for.
+    pub shares_per_minute: f64,
+    /// How long to wait for the translator's port to open before giving up (clamped to 5-300).
+    pub startup_timeout_secs: u64,
+    /// Removed Phase 4 placeholder; setting it is an error.
     pub translator_url: Option<String>,
-    pub authority_public_key: Option<String>,
+}
+
+impl Default for StratumV2Config {
+    fn default() -> Self {
+        StratumV2Config {
+            enabled: false,
+            translator_path: None,
+            upstream_address: None,
+            authority_pubkey: None,
+            user_identity: None,
+            downstream_port: crate::tproxy::DEFAULT_DOWNSTREAM_PORT,
+            expected_hashrate_hs: 1_000_000.0,
+            shares_per_minute: 6.0,
+            startup_timeout_secs: 30,
+            translator_url: None,
+        }
+    }
+}
+
+/// `[pool_stats]`: optional, read-only poll of the pool's own account API (Braiins Pool only). Local display only.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PoolStatsConfig {
+    pub enabled: bool,
+    /// Only `"braiins"` is implemented (the only pool whose stats API is documented in docs/stratum.md).
+    pub provider: String,
+    /// File holding the pool API token (one line). Must be readable by you only (chmod 600). The token is never put in
+    /// config.toml, logs, status.json or telemetry, and is only ever sent to the pool's own API host.
+    pub api_key_file: Option<PathBuf>,
+    /// Poll interval; clamped to 60-3600 s (the pool documents about one request per 5 s as a safe maximum).
+    pub poll_secs: u64,
+    /// Only count workers whose name equals this or starts with `<this>.`. Default: your pool user / user_identity.
+    pub worker_prefix: Option<String>,
+    /// API base URL override (default `https://pool.braiins.com`); `http` is only accepted for loopback (tests).
+    pub base_url: Option<String>,
+}
+
+impl Default for PoolStatsConfig {
+    fn default() -> Self {
+        PoolStatsConfig {
+            enabled: false,
+            provider: "braiins".into(),
+            api_key_file: None,
+            poll_secs: 300,
+            worker_prefix: None,
+            base_url: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -103,7 +188,11 @@ pub struct Config {
     pub miner: MinerConfig,
     pub limits: LimitsConfig,
     pub timing: TimingConfig,
+    /// `"sv1"` (direct, default) or `"sv2"` (via the local translator proxy). If unset: `sv2` when
+    /// `stratum_v2.enabled`, else `sv1`. Never switches automatically at run time.
+    pub mode: Option<PoolMode>,
     pub stratum_v2: StratumV2Config,
+    pub pool_stats: PoolStatsConfig,
 }
 
 /// What the agent will actually execute. `display_args` has secrets redacted and is the only form that is logged.
@@ -113,17 +202,24 @@ pub struct MinerCommand {
     pub args: Vec<String>,
     pub display_args: Vec<String>,
     pub pool_password: Option<String>,
+    /// Extra environment for the child (never secrets).
+    pub env: Vec<(String, String)>,
 }
 
 pub const TEMPLATE: &str = r#"# BTC Network AI agent configuration.
 # Nothing here is a secret EXCEPT possibly your pool password; never put private keys, seed phrases or xprv here.
-# Docs: agent/README.md
+# Docs: agent/README.md and docs/stratum.md
 
 # PUBLIC receive address only (bc1..., 1..., 3...). Private keys / WIF / xprv / seed phrases are rejected.
 # payout_address = "bc1q..."
 
+# How the miner reaches the pool. Explicit, never switched automatically:
+#   "sv1" = direct Stratum V1 (uses [pool] below; plaintext, no pool authentication)   <- default
+#   "sv2" = Stratum V2 through a local SRI translator proxy (uses [stratum_v2] below)
+mode = "sv1"
+
 [pool]
-# Stratum V1 URL, no credentials in the URL:
+# Stratum V1 URL (mode = "sv1"), no credentials in the URL:
 # url = "stratum+tcp://pool.example.com:3333"
 # user = "<payout address>.<worker name>"   # defaults to payout_address
 # password = "x"
@@ -132,6 +228,7 @@ pub const TEMPLATE: &str = r#"# BTC Network AI agent configuration.
 # Path to an existing open-source miner (e.g. cpuminer-opt). The agent never writes or bundles a miner.
 # path = "/usr/local/bin/cpuminer"
 # Placeholders: {pool_url} {pool_user} {pool_password} {payout_address} {threads}
+# In sv2 mode {pool_url} is the translator's loopback address (stratum+tcp://127.0.0.1:<downstream_port>).
 # args = ["-a", "sha256d", "-o", "{pool_url}", "-u", "{pool_user}", "-p", "{pool_password}"]
 kind = "cpuminer"        # or "generic" (then set hashrate_regex / accepted_regex / rejected_regex)
 threads_flag = "-t"      # appended as "-t <cpu_threads>" when args has no {threads}
@@ -144,8 +241,25 @@ threads_flag = "-t"      # appended as "-t <cpu_threads>" when args has no {thre
 command_poll_secs = 45   # 30-300
 status_line_secs = 60
 
-[stratum_v2]             # Phase 5 placeholder, must stay disabled
+# Stratum V2 via a local SRI translator proxy (translator_sv2). The agent writes the proxy's config, starts it as a second
+# visible child process, waits for its port, then points the miner at it. Set mode = "sv2" and enabled = true together.
+[stratum_v2]
 enabled = false
+# translator_path = "/usr/local/bin/translator_sv2"  # default: translator_sv2 on PATH
+# upstream_address = "pool.example.com:3333"         # the pool's Stratum V2 host:port, from the pool's own docs
+# authority_pubkey = "9..."                          # the pool's PUBLIC authority key, from the pool's own docs
+# user_identity = "<account>.<worker>"               # defaults to pool.user, then payout_address
+# downstream_port = 34255                            # loopback only
+# expected_hashrate_hs = 1000000.0                   # vardiff starting hint for THIS machine (not a measurement)
+# shares_per_minute = 6.0
+
+# Optional read-only stats from the pool's own account API (Braiins Pool only). Shown locally; never sent to the server.
+[pool_stats]
+enabled = false
+# provider = "braiins"
+# api_key_file = "/home/you/.config/btc-agent/pool-api-token"   # chmod 600; the token is NOT stored in this file
+# poll_secs = 300
+# worker_prefix = "<account>.<worker>"               # default: your pool user / user_identity
 "#;
 
 impl Config {
@@ -165,6 +279,16 @@ impl Config {
     pub fn effective_threads(&self, logical_cpus: usize) -> u32 {
         let default = (logical_cpus / 2).max(1) as u32;
         self.limits.cpu_threads.unwrap_or(default).clamp(1, logical_cpus.max(1) as u32)
+    }
+
+    /// The mode that will run: the explicit `mode`, else `sv2` if `stratum_v2.enabled`, else `sv1`.
+    pub fn effective_mode(&self) -> PoolMode {
+        self.mode.unwrap_or(if self.stratum_v2.enabled { PoolMode::Sv2 } else { PoolMode::Sv1 })
+    }
+
+    /// What the miner connects to in `sv2` mode: the translator's loopback listener (plaintext SV1, never exposed).
+    pub fn local_translator_url(&self) -> String {
+        format!("stratum+tcp://{}:{}", crate::tproxy::DOWNSTREAM_ADDRESS, self.stratum_v2.downstream_port)
     }
 
     pub fn pool_user(&self) -> Option<String> {
@@ -197,26 +321,20 @@ impl Config {
             }
         }
 
-        match self.pool.url.as_deref() {
-            None => p.push("pool.url is not set".into()),
-            Some(u) => match url::Url::parse(u) {
-                Err(_) => p.push("pool.url is not a valid URL".into()),
-                Ok(url) => {
-                    if !matches!(url.scheme(), "stratum+tcp" | "stratum+ssl" | "stratum+tls" | "tcp" | "ssl") {
-                        p.push("pool.url scheme must be stratum+tcp:// (or stratum+ssl://)".into());
-                    }
-                    if url.host_str().is_none() || url.port().is_none() {
-                        p.push("pool.url must include a host and a port".into());
-                    }
-                    if !url.username().is_empty() || url.password().is_some() {
-                        p.push("pool.url must not contain credentials; use pool.user / pool.password".into());
-                    }
-                }
-            },
+        match (self.mode, self.stratum_v2.enabled) {
+            (Some(PoolMode::Sv1), true) => {
+                p.push("mode = \"sv1\" conflicts with stratum_v2.enabled = true: set mode = \"sv2\" or stratum_v2.enabled = false".into())
+            }
+            (Some(PoolMode::Sv2), false) => p.push("mode = \"sv2\" requires stratum_v2.enabled = true".into()),
+            _ => {}
         }
-        if self.pool_user().is_none() {
-            p.push("set pool.user or payout_address".into());
+        match self.effective_mode() {
+            PoolMode::Sv2 => p.extend(crate::tproxy::problems(self)),
+            PoolMode::Sv1 => {
+                p.extend(self.sv1_pool_problems());
+            }
         }
+        p.extend(crate::poolstats::problems(self));
 
         match &self.miner.path {
             None => p.push("miner.path is not set".into()),
@@ -238,8 +356,31 @@ impl Config {
         if self.limits.max_temperature_c.is_some() {
             p.push("limits.max_temperature_c is not implemented yet (temperature cannot be read reliably); remove it".into());
         }
-        if self.stratum_v2.enabled {
-            p.push("stratum_v2.enabled must be false: Stratum V2 is planned for Phase 5".into());
+        p
+    }
+
+    /// Problems with the direct Stratum V1 pool settings (`mode = "sv1"`).
+    fn sv1_pool_problems(&self) -> Vec<String> {
+        let mut p = Vec::new();
+        match self.pool.url.as_deref() {
+            None => p.push("pool.url is not set".into()),
+            Some(u) => match url::Url::parse(u) {
+                Err(_) => p.push("pool.url is not a valid URL".into()),
+                Ok(url) => {
+                    if !matches!(url.scheme(), "stratum+tcp" | "stratum+ssl" | "stratum+tls" | "tcp" | "ssl") {
+                        p.push("pool.url scheme must be stratum+tcp:// (or stratum+ssl://)".into());
+                    }
+                    if url.host_str().is_none() || url.port().is_none() {
+                        p.push("pool.url must include a host and a port".into());
+                    }
+                    if !url.username().is_empty() || url.password().is_some() {
+                        p.push("pool.url must not contain credentials; use pool.user / pool.password".into());
+                    }
+                }
+            },
+        }
+        if self.pool_user().is_none() {
+            p.push("set pool.user or payout_address".into());
         }
         p
     }
@@ -248,8 +389,11 @@ impl Config {
     pub fn miner_command(&self, logical_cpus: usize) -> Result<MinerCommand> {
         let program = self.miner.path.clone().context("miner.path is not set")?;
         let threads = self.effective_threads(logical_cpus).to_string();
-        let pool_url = self.pool.url.clone().unwrap_or_default();
-        let pool_user = self.pool_user().unwrap_or_default();
+        // sv1: the pool itself. sv2: the translator's loopback listener (the translator holds the pool address and key).
+        let (pool_url, pool_user) = match self.effective_mode() {
+            PoolMode::Sv1 => (self.pool.url.clone().unwrap_or_default(), self.pool_user().unwrap_or_default()),
+            PoolMode::Sv2 => (self.local_translator_url(), self.sv2_user_identity().unwrap_or_default()),
+        };
         let pool_password = self.pool.password.clone().unwrap_or_default();
         let payout = self.payout_address.clone().unwrap_or_default();
 
@@ -276,7 +420,13 @@ impl Config {
                 *d = d.replace(&pool_password, "***");
             }
         }
-        Ok(MinerCommand { program, args, display_args, pool_password: (pool_password.len() >= 4).then_some(pool_password) })
+        Ok(MinerCommand {
+            program,
+            args,
+            display_args,
+            pool_password: (pool_password.len() >= 4).then_some(pool_password),
+            env: Vec::new(),
+        })
     }
 }
 
@@ -386,10 +536,8 @@ threads_flag = "-t"
         let f = fake_miner_file();
         let mut c = valid(f.path());
         c.limits.max_temperature_c = Some(80.0);
-        c.stratum_v2.enabled = true;
         let p = c.problems(8);
         assert!(p.iter().any(|m| m.contains("max_temperature_c")));
-        assert!(p.iter().any(|m| m.contains("Stratum V2")));
     }
 
     #[test]
@@ -408,5 +556,174 @@ threads_flag = "-t"
         assert_eq!(c.command_poll_secs(), 30);
         c.timing.command_poll_secs = 99_999;
         assert_eq!(c.command_poll_secs(), 300);
+    }
+
+    // ---------------------------------------------------------------- Phase 5: mode / Stratum V2
+    const SRI_KEY: &str = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72";
+
+    #[cfg(unix)]
+    fn fake_translator_file() -> tempfile::NamedTempFile {
+        use std::os::unix::fs::PermissionsExt;
+        let f = tempfile::NamedTempFile::new().unwrap();
+        std::fs::set_permissions(f.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        f
+    }
+
+    #[cfg(unix)]
+    fn valid_sv2(miner: &Path, translator: &Path) -> Config {
+        let mut c = valid(miner);
+        c.mode = Some(PoolMode::Sv2);
+        c.pool.url = None;
+        c.stratum_v2 = StratumV2Config {
+            enabled: true,
+            translator_path: Some(translator.to_path_buf()),
+            upstream_address: Some("pool.example.com:3333".into()),
+            authority_pubkey: Some(SRI_KEY.into()),
+            user_identity: Some("account.rig1".into()),
+            ..StratumV2Config::default()
+        };
+        c
+    }
+
+    #[test]
+    fn mode_defaults_to_sv1_and_is_inferred_from_enabled() {
+        let c = Config::default();
+        assert_eq!(c.effective_mode(), PoolMode::Sv1);
+        let mut c = Config::default();
+        c.stratum_v2.enabled = true;
+        assert_eq!(c.effective_mode(), PoolMode::Sv2);
+        c.mode = Some(PoolMode::Sv1);
+        assert_eq!(c.effective_mode(), PoolMode::Sv1, "an explicit mode always wins");
+    }
+
+    #[test]
+    fn mode_and_enabled_must_agree() {
+        let f = fake_miner_file();
+        let mut c = valid(f.path());
+        c.mode = Some(PoolMode::Sv1);
+        c.stratum_v2.enabled = true;
+        assert!(c.problems(8).iter().any(|m| m.contains("conflicts with stratum_v2.enabled")), "{:?}", c.problems(8));
+        let mut c = valid(f.path());
+        c.mode = Some(PoolMode::Sv2);
+        assert!(c.problems(8).iter().any(|m| m.contains("requires stratum_v2.enabled = true")));
+    }
+
+    #[test]
+    fn toml_parsing_of_the_new_keys_and_the_old_placeholder_alias() {
+        let c = Config::parse(
+            r#"
+mode = "sv2"
+[stratum_v2]
+enabled = true
+upstream_address = "pool.example.com:3333"
+authority_public_key = "abc"
+downstream_port = 40000
+"#,
+        )
+        .unwrap();
+        assert_eq!(c.mode, Some(PoolMode::Sv2));
+        assert_eq!(c.stratum_v2.authority_pubkey.as_deref(), Some("abc"));
+        assert_eq!(c.stratum_v2.downstream_port, 40000);
+        assert!(Config::parse("mode = \"sv3\"").is_err());
+        assert!(Config::parse("[stratum_v2]\nbogus = 1").is_err());
+        assert!(Config::parse("[pool_stats]\nbogus = 1").is_err());
+    }
+
+    #[test]
+    fn the_generated_template_parses_and_defaults_to_sv1_with_everything_off() {
+        let c = Config::parse(TEMPLATE).unwrap();
+        assert_eq!(c.effective_mode(), PoolMode::Sv1);
+        assert!(!c.stratum_v2.enabled && !c.pool_stats.enabled);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn valid_sv2_config_has_no_problems_and_points_the_miner_at_the_loopback_proxy() {
+        let (m, t) = (fake_miner_file(), fake_translator_file());
+        let c = valid_sv2(m.path(), t.path());
+        assert!(c.problems(8).is_empty(), "{:?}", c.problems(8));
+        let cmd = c.miner_command(8).unwrap();
+        assert_eq!(cmd.args[..4], ["-o", "stratum+tcp://127.0.0.1:34255", "-u", "account.rig1"], "{:?}", cmd.args);
+        // The pool address and key are in the proxy's config, not on the miner's command line.
+        let all = cmd.args.join(" ");
+        assert!(!all.contains("pool.example.com") && !all.contains(SRI_KEY));
+        let tc = c.translator_command(std::path::Path::new("/tmp/tproxy.toml")).unwrap();
+        assert_eq!(tc.args, ["-c", "/tmp/tproxy.toml"]);
+        assert_eq!(tc.port, 34255);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sv1_mode_ignores_the_stratum_v2_section_and_keeps_the_v1_command() {
+        let (m, t) = (fake_miner_file(), fake_translator_file());
+        let mut c = valid_sv2(m.path(), t.path());
+        c.mode = Some(PoolMode::Sv1);
+        c.stratum_v2.enabled = false;
+        c.pool.url = Some("stratum+tcp://pool.example.com:3333".into());
+        assert!(c.problems(8).is_empty(), "{:?}", c.problems(8));
+        assert_eq!(c.miner_command(8).unwrap().args[..2], ["-o", "stratum+tcp://pool.example.com:3333"]);
+    }
+
+    #[test]
+    fn sv2_mode_reports_every_missing_piece_with_the_install_link_for_the_translator() {
+        let f = fake_miner_file();
+        let mut c = valid(f.path());
+        c.mode = Some(PoolMode::Sv2);
+        c.stratum_v2.enabled = true;
+        c.stratum_v2.translator_path = Some("/definitely/not/here/translator_sv2".into());
+        c.payout_address = None;
+        c.pool.user = None;
+        let p = c.problems(8).join("\n");
+        for needle in [
+            "upstream_address is not set",
+            "authority_pubkey is not set",
+            "stratum_v2.user_identity",
+            "does not exist",
+            crate::tproxy::TPROXY_INSTALL_URL,
+        ] {
+            assert!(p.contains(needle), "missing {needle:?} in:\n{p}");
+        }
+        // pool.url is not required in sv2 mode
+        assert!(!p.contains("pool.url"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sv2_value_validation_covers_key_address_port_and_tuning() {
+        let (m, t) = (fake_miner_file(), fake_translator_file());
+        let base = valid_sv2(m.path(), t.path());
+        type Mutator = Box<dyn Fn(&mut Config)>;
+        let cases: Vec<(&str, Mutator)> = vec![
+            ("authority_pubkey", Box::new(|c| c.stratum_v2.authority_pubkey = Some("9notAKey".into()))),
+            ("upstream_address", Box::new(|c| c.stratum_v2.upstream_address = Some("stratum2+tcp://pool:3333/9abc".into()))),
+            ("downstream_port", Box::new(|c| c.stratum_v2.downstream_port = 80)),
+            ("expected_hashrate_hs", Box::new(|c| c.stratum_v2.expected_hashrate_hs = f64::NAN)),
+            ("shares_per_minute", Box::new(|c| c.stratum_v2.shares_per_minute = 0.0)),
+            ("translator_url", Box::new(|c| c.stratum_v2.translator_url = Some("tcp://x".into()))),
+            ("user_identity", Box::new(|c| c.stratum_v2.user_identity = Some("has space".into()))),
+        ];
+        for (needle, f) in cases {
+            let mut c = base.clone();
+            f(&mut c);
+            assert!(c.problems(8).iter().any(|m| m.contains(needle)), "{needle}: {:?}", c.problems(8));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pool_stats_needs_a_private_token_file_and_a_supported_provider() {
+        use std::os::unix::fs::PermissionsExt;
+        let (m, t) = (fake_miner_file(), fake_translator_file());
+        let mut c = valid_sv2(m.path(), t.path());
+        let tok = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tok.path(), "tok\n").unwrap();
+        std::fs::set_permissions(tok.path(), std::fs::Permissions::from_mode(0o644)).unwrap();
+        c.pool_stats.enabled = true;
+        c.pool_stats.api_key_file = Some(tok.path().to_path_buf());
+        assert!(c.problems(8).iter().any(|m| m.contains("chmod 600")), "{:?}", c.problems(8));
+        std::fs::set_permissions(tok.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(c.problems(8).is_empty(), "{:?}", c.problems(8));
+        c.pool_stats.provider = "other".into();
+        assert!(c.problems(8).iter().any(|m| m.contains("not supported")));
     }
 }

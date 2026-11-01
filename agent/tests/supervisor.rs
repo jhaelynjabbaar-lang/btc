@@ -28,6 +28,10 @@ fn fast_timing() -> Timing {
         miner_restart_base: Duration::from_millis(200),
         miner_restart_max: Duration::from_millis(400),
         miner_stop_grace: Duration::from_secs(2),
+        translator_probe: Duration::from_millis(50),
+        translator_startup: Duration::from_secs(5),
+        translator_stop_grace: Duration::from_secs(2),
+        pool_stats_poll: Duration::from_secs(3600),
         api_backoff_base: Duration::from_secs(1),
         api_backoff_max: Duration::from_secs(2),
     }

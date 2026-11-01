@@ -55,6 +55,16 @@ impl MinerStats {
         self.hashrate.filter(|(_, at)| now.saturating_sub(*at) <= HASHRATE_STALE_SECS).map(|(h, _)| h)
     }
 
+    /// Add shares the POOL confirmed (accepted) or rejected, e.g. from the Stratum V2 translator's log.
+    pub fn add_shares(&mut self, accepted: u64, rejected: u64) {
+        if accepted > 0 {
+            self.accepted = Some(self.accepted.unwrap_or(0) + accepted);
+        }
+        if rejected > 0 {
+            self.rejected = Some(self.rejected.unwrap_or(0) + rejected);
+        }
+    }
+
     /// Apply one parsed event. Returns `(hashrate_sample, accepted_delta, rejected_delta)`.
     pub fn apply(&mut self, ev: &MinerEvent, now: u64) -> (Option<f64>, u64, u64) {
         let (mut da, mut dr) = (0, 0);

@@ -1,4 +1,4 @@
-# btc-agent: BTC Network AI worker agent (Phase 4)
+# btc-agent: BTC Network AI worker agent (Phase 4 + Phase 5: Stratum V2)
 
 A small Rust program that turns **a machine you own (or are explicitly authorized to use)** into a worker for the
 BTC Network AI platform. It does **not** contain a miner. It runs an existing open-source miner as a **visible child
@@ -57,6 +57,100 @@ is a Stratum V1 CPU miner such as [`cpuminer-opt`](https://github.com/JayDDee/cp
 Parsing is best-effort against the miner's console output and **must be checked against your actual miner's output**
 (`agent.log` contains every miner line). Reading a miner's HTTP/JSON API is future work.
 
+## Stratum V2 (SRI translator proxy)
+
+Background, versions, pool facts and trade-offs, each with a source link, are in [`../docs/stratum.md`](../docs/stratum.md). Short version:
+Stratum V2 encrypts the link to the pool and authenticates the pool by its public authority key. Ordinary SV1 miners (cpuminer-opt, ...)
+cannot speak it, so the agent runs the Stratum Reference Implementation's **translator proxy** (`translator_sv2`) as a **second visible
+child process**, and points the miner at it on loopback:
+
+```
+miner --SV1 (127.0.0.1 only)--> translator_sv2 --SV2 + Noise--> pool
+```
+
+### Setup on Linux (Stratum V2)
+
+1. **Build the translator** (no prebuilt binary is provided; Rust 1.88):
+
+   ```sh
+   rustup toolchain install 1.88.0
+   git clone https://github.com/stratum-mining/sv2-apps && cd sv2-apps
+   git checkout v0.8.0
+   cargo build --release -p translator_sv2        # -> target/release/translator_sv2
+   sudo install target/release/translator_sv2 /usr/local/bin/   # or just note the path
+   ```
+
+   Official instructions: <https://github.com/stratum-mining/sv2-apps/tree/main/miner-apps/translator#installation--build>.
+2. **Install a miner you trust** (e.g. cpuminer-opt) as in "The miner (bring your own)".
+3. **Get from your pool's official docs**: its Stratum V2 `host:port` and its **public authority key**, plus your account/worker name.
+   (Braiins Pool publishes both; see `docs/stratum.md` for the exact values and links, and for what is *not* verified. The agent ships no
+   pool defaults.)
+4. **Edit `config.toml`**:
+
+   ```toml
+   payout_address = "bc1q..."                 # public address only
+   mode = "sv2"
+
+   [miner]
+   path = "/usr/local/bin/cpuminer"
+   args = ["-a", "sha256d", "-o", "{pool_url}", "-u", "{pool_user}", "-p", "{pool_password}"]   # {pool_url} = the proxy on 127.0.0.1
+
+   [stratum_v2]
+   enabled = true
+   translator_path = "/usr/local/bin/translator_sv2"   # default: translator_sv2 on PATH
+   upstream_address = "stratum.braiins.com:3333"        # example only: take yours from your pool's docs
+   authority_pubkey = "9awtMD5KQgvRUh2yFbjVeT7b6hjipWcAsQHd6wEhgtDT9soosna"   # PUBLIC key; the Braiins key from its docs
+   user_identity = "myaccount.rig1"                     # defaults to pool.user, then payout_address
+   downstream_port = 34255                              # loopback only; must be free
+   # expected_hashrate_hs = 1000000.0                   # vardiff starting hint (a CPU does far less; this is not a measurement)
+   # shares_per_minute = 6.0
+   # startup_timeout_secs = 30
+   ```
+5. `btc-agent run`. The banner lists **both** processes (`Miner:` and `Proxy:` with PIDs, and the pool line saying
+   `Stratum V2, Noise-encrypted, via the proxy`); `status.json` and `btc-agent status` show `mode`, `translator_pid` and `translator_port`; the proxy's own
+   output is in `agent.log` as `TPROXY` lines.
+
+What the agent does for you:
+
+* Validates the config up front and lists every problem at once. A missing or non-executable translator gives a clear message with the install
+  link above. The authority key must be a valid key (a 32-byte/secret-key style string is refused), the upstream must be `host:port`, and
+  private-key/xprv/seed-phrase look-alikes are rejected in every new field too.
+* On start it writes `tproxy.toml` (0600, no secrets), checks the downstream port is free, starts the proxy, waits for its port and **only then** starts the miner. If the
+  proxy fails or never listens, the miner is not started and you see why, with the proxy's last output.
+* `pause`, `stop`, Ctrl-C, or a crash of either process stops **both** (miner first, then proxy); a crashed proxy takes the miner down and both are restarted with
+  backoff. No orphans (covered by tests).
+* **Shares are counted only when the pool confirms them.** tProxy accepts a miner's share locally first, so the miner's own "accepted" counter is not used
+  in SV2 mode; the agent counts only the proxy's `SubmitSharesSuccess` / `SubmitSharesError` log lines (pinned to the translator versions in `docs/stratum.md`; if the format
+  ever changes, the counters become "unknown" rather than guessed). Hashrate is still read from the miner.
+* The first-run consent text (version 2) now discloses the second program; if you consented earlier you will be asked again.
+
+If the pool is unreachable or the key is wrong, the proxy keeps retrying and logs the errors; the agent does **not** silently fall back to V1. To use V1, set
+`mode = "sv1"` yourself.
+
+### Setup on Linux (Stratum V1, the explicit fallback)
+
+Same as before: `mode = "sv1"` (or leave it out), fill in `[pool]` (`url = "stratum+tcp://host:port"`, `user`, `password`) and `[miner]`, keep `[stratum_v2] enabled = false`.
+V1 is plaintext and does not authenticate the pool; use it only where that is acceptable, or when your pool has no Stratum V2 endpoint.
+
+### Optional: pool-side stats (Braiins Pool only)
+
+```toml
+[pool_stats]
+enabled = true
+provider = "braiins"
+api_key_file = "/home/you/.config/btc-agent/pool-api-token"   # a file you create; the token is NOT put in config.toml
+poll_secs = 300                                               # 60-3600
+# worker_prefix = "myaccount.rig1"                            # default: your pool user / user_identity
+```
+
+```sh
+install -m 600 /dev/null ~/.config/btc-agent/pool-api-token && $EDITOR ~/.config/btc-agent/pool-api-token   # paste the Braiins access token
+```
+
+The agent refuses a token file that is readable by group/others. The token is only ever sent to Braiins (HTTPS, no redirects), is never written to the log, `status.json`
+or telemetry, and **is never sent to the platform server**. The numbers shown (`pool says: ...`) are the pool's own hashrate/share counts for your workers, labelled as
+pool-reported; they are not merged into the agent's counters or telemetry. No earnings or balances are read or shown. Other pools: future work.
+
 ## Consent
 
 ```sh
@@ -110,9 +204,12 @@ cpu_threads = 2                       # default: half the logical CPUs
 command_poll_secs = 45                # clamped to 30-300 (server limit: 40 requests/min per worker)
 status_line_secs = 60
 
-[stratum_v2]                          # Phase 5 placeholder; must stay false
-enabled = false
+# mode = "sv1" is the default and is implied by the file above. For Stratum V2 see "Stratum V2 (SRI translator proxy)" below.
 ```
+
+The top-level `mode` key chooses the pool path and is **explicit, never switched automatically**: `mode = "sv1"` (default, direct
+Stratum V1, plaintext) or `mode = "sv2"` (through the local SRI translator proxy). The V1 `[pool]` section is the fallback: to go back
+to V1, set `mode = "sv1"` and keep `[stratum_v2] enabled = false`.
 
 Placeholders in `args`: `{pool_url}`, `{pool_user}`, `{pool_password}`, `{payout_address}`, `{threads}`. The pool password is
 redacted (`***`) in everything the agent logs, but note that it is visible to other local users in the process list
@@ -208,12 +305,20 @@ Rust tests assert byte-identical signatures.
 * `cargo test`: unit tests (signing vectors, config + secret rejection, consent gate, telemetry aggregation and buffer, command
   planning, parsing) and integration tests that run `examples/fake_miner` (prints cpuminer-style lines; no hashing, no network)
   to test spawn / parse / pause / start / stop / crash-restart / orphan-free shutdown. The fake miner is for tests only.
+* Stratum V2 (Phase 5): unit tests for TOML generation, config validation, key formats, process lifecycle and pool-stats parsing;
+  `tests/sv2_stack.rs` runs the two-process orchestration against `examples/fake_tproxy.rs` (a **fake** translator that speaks minimal SV1 on
+  loopback and prints simulated pool lines) and `examples/fake_sv1_miner.rs` (a fake miner that refuses non-loopback hosts).
+* Optional `tests/sri_real.rs`: the agent drives the **real** `translator_sv2` against `integration/sri-mock-pool`, a local test-double Stratum V2 pool
+  (real Noise handshake with a key generated at runtime). It is skipped unless `BTC_AGENT_REAL_TPROXY` and `BTC_AGENT_SRI_MOCK_POOL` point to the binaries; see
+  [`integration/sri-mock-pool/README.md`](integration/sri-mock-pool/README.md). No real pool is ever contacted by any test.
 * A live integration test against the deployed Worker (with the fake miner, never a real miner) was run for the Phase 4 PR and
   its results are in the PR description.
 
 ## Limitations / future work
 
-* Stratum V1 pass-through only. Stratum V2 / SRI translator support is Phase 5 (config placeholders only).
+* Stratum V2 goes through SRI's translator proxy (you build and install it). Tested against the real translator only with a local mock pool: **not** against Braiins,
+  DMND or any other real pool (see `docs/stratum.md`). Share counting in SV2 mode relies on the translator's log lines. Pool-side stats exist for Braiins only.
+* CPU and GPU Bitcoin mining earns nearly nothing, in either mode. Stratum V2 improves security and bandwidth, not profitability.
 * No temperature limit, no idle/schedule window, no miner HTTP API polling.
 * No automatic start at boot (deliberately: you start it yourself, in a terminal, where you can see it).
 * The agent cannot tell the server it exited; the server sees it go quiet.
